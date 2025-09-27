@@ -10,6 +10,10 @@ At its core, the system allows users to perform granular annotations on high-res
 
 WDB is designed to transform digital image archives into structured, searchable, and interoperable linguistic databases, ready for scholarly research and public engagement.
 
+## **Screenshots**
+
+![Screenshot](docs/screenshots/wdb-screenshot-01.png)
+
 ## **2\. Features**
 
 * **IIIF-Compliant Viewer & Editor:** A powerful and intuitive interface for viewing and annotating high-resolution images, built with OpenSeadragon and Annotorious v3.
@@ -261,6 +265,10 @@ Word-Database (WDB) Core モジュールは、言語学者、歴史学者、文�
 このシステムの中核となるのは、IIIFに準拠した高精細画像に対して詳細なアノテーションを付与し、個々の文字（`sign`）や単語（`word`）を、詳細な言語情報と結びつける機能です。この深いデータ構造により、**画像上の文脈から直接テキスト情報を検索する**、といった強力な検索が可能になります。OpenSeadragonとAnnotorious v3をベースにしたリッチなユーザーインターフェース、堅牢なデータ投入ワークフロー、そしてDrupalのコアシステムとの深い統合を特徴としています。
 
 WDBは、デジタル化された画像アーカイブを、学術研究と公開活用のための、構造化され、検索可能で、相互運用性の高い言語データベースへと変換するために設計されています。
+
+### **スクリーンショット**
+
+![スクリーンショット](docs/screenshots/wdb-screenshot-01.png)
 
 ## **2\. 主な機能**
 
