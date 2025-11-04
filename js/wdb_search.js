@@ -77,7 +77,7 @@
         const limit = response.limit || 50;
         const currentPage = response.page || 0;
 
-        resultsContainer.append($('<h3>').text(Drupal.t('Found @count results', {'@count': total})));
+        resultsContainer.append($('<h3>').text(Drupal.t('Found @count results', { '@count': total })));
 
         if (results.length > 0) {
           const resultList = $('<ul>').addClass('wdb-search-results');
@@ -85,7 +85,24 @@
 
             const resultIndex = (currentPage * limit) + index + 1;
             const numberSpan = $('<span>').addClass('search-result-number').text(`${resultIndex}. `);
-            const link = $('<a>').attr('href', item.link).attr('target', '_blank').text(`${item.realized_form} (${item.basic_form})`);
+            // Normalize highlight_annotation in the URL to be path-only so it works across domains.
+            let hrefVal = item.link || '#';
+            try {
+              const u = new URL(hrefVal, window.location.origin);
+              const ha = u.searchParams.get('highlight_annotation');
+              if (ha) {
+                try {
+                  const hau = new URL(ha, window.location.origin);
+                  let p = hau.pathname || ha;
+                  if (p.length > 1 && p.endsWith('/')) p = p.slice(0, -1);
+                  u.searchParams.set('highlight_annotation', p);
+                  hrefVal = u.toString();
+                } catch (_) {
+                  // If not a full URL, keep as-is
+                }
+              }
+            } catch (_) { /* keep original */ }
+            const link = $('<a>').attr('href', hrefVal).attr('target', '_blank').text(`${item.realized_form} (${item.basic_form})`);
 
             // Add lexical category information.
             const lexicalCategoryInfo = $('<span>').addClass('lexical-category-info').text(`[${item.lexical_category}]`);

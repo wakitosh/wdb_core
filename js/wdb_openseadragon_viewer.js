@@ -31,6 +31,21 @@
   let _lastAnimStartTs = 0;
 
   const nowTs = () => Date.now();
+  // Helper to compute 1:1 (native resolution) viewport zoom.
+  // Prefer TiledImage conversion when available; fall back to viewport's conversion.
+  const getOneToOneViewportZoom = (viewer) => {
+    try {
+      const ti = viewer?.world?.getItemAt(0);
+      if (ti && typeof ti.imageToViewportZoom === 'function') {
+        return ti.imageToViewportZoom(1);
+      }
+      const vp = viewer?.viewport;
+      if (vp && typeof vp.imageToViewportZoom === 'function') {
+        return vp.imageToViewportZoom(1);
+      }
+    } catch (_) { /* noop */ }
+    return null;
+  };
 
   /**
    * Helper function to add the tooltip DOM element to the page just once.
@@ -63,6 +78,22 @@
 
         // Initialize the viewer.
         const osdSettings = drupalSettings.wdb_core.openseadragon;
+        // Track when full text HTML is ready so we can sequence: Text -> Annotation -> Selection/Pan
+        let _fullTextLoaded = false;
+        const _fullTextWaiters = [];
+        const markFullTextReady = () => {
+          _fullTextLoaded = true;
+          try {
+            while (_fullTextWaiters.length) {
+              const fn = _fullTextWaiters.shift();
+              try { fn && fn(); } catch (_) { /* noop */ }
+            }
+          } catch (_) { /* noop */ }
+        };
+        const onFullTextReady = (fn) => {
+          if (_fullTextLoaded) { setTimeout(() => { try { fn && fn(); } catch (_) { /* noop */ } }, 0); }
+          else _fullTextWaiters.push(fn);
+        };
         const viewer = OpenSeadragon({
           drawer: 'canvas',
           element: viewerElement,
@@ -72,6 +103,8 @@
           defaultZoomLevel: 0,
           minZoomLevel: 0.5,
           homeFillsViewer: true,
+          // Pan/zoom animation duration (seconds). Shortened for snappier tail.
+          animationTime: 1.0,
           crossOriginPolicy: 'Anonymous',
           gestureSettingsMouse: { clickToZoom: false },
           // デフォルトのフリック挙動を使用（clickToZoomのみ無効）
@@ -79,6 +112,42 @@
           gestureSettingsPen: { clickToZoom: false }, // added to prevent pen tap zoom
           gestureSettingsUnknown: { clickToZoom: false },
         });
+
+        // Temporary animation tuners to smooth pan without permanently changing globals.
+        const withTempAnimation = (durationSec, fn) => {
+          const vp = viewer?.viewport;
+          const prevViewer = (viewer && typeof viewer.animationTime === 'number') ? viewer.animationTime : null;
+          const prevVp = (vp && typeof vp.animationTime === 'number') ? vp.animationTime : null;
+          try {
+            if (typeof durationSec === 'number' && isFinite(durationSec)) {
+              if (viewer) viewer.animationTime = durationSec;
+              if (vp) vp.animationTime = durationSec;
+            }
+            return fn && fn();
+          } finally {
+            if (viewer && prevViewer !== null) viewer.animationTime = prevViewer;
+            if (vp && prevVp !== null) vp.animationTime = prevVp;
+          }
+        };
+
+        const withTempSpring = (stiffness, fn) => {
+          const vp = viewer?.viewport;
+          const hasVpSpring = vp && typeof vp.springStiffness === 'number';
+          const prevViewer = (viewer && typeof viewer.springStiffness === 'number') ? viewer.springStiffness : null;
+          const prevVp = hasVpSpring ? vp.springStiffness : null;
+          try {
+            if (typeof stiffness === 'number' && isFinite(stiffness)) {
+              if (hasVpSpring) vp.springStiffness = stiffness;
+              else if (viewer) viewer.springStiffness = stiffness;
+            }
+            return fn && fn();
+          } finally {
+            try {
+              if (hasVpSpring && prevVp !== null) vp.springStiffness = prevVp;
+              else if (viewer && prevViewer !== null) viewer.springStiffness = prevViewer;
+            } catch (_) { /* noop */ }
+          }
+        };
 
         // Fast redraw on outer/viewport resize to eliminate startup lag and stalls
         let _fastRedrawRaf = 0;
@@ -488,19 +557,155 @@
         /**
          * Helper function to pan the viewer to the center of a given annotation.
          * @param {string} annotationId - The ID of the annotation to pan to.
+         * @param {{ignoreSuppression?: boolean, animate?: boolean}} [opts]
          */
-        const panToAnnotation = (annotationId) => {
-          // Skip auto pan while suppressed (avoid recent selection auto-centering)
-          if (isSuppressed()) return;
+        const panToAnnotation = (annotationId, opts = {}) => {
+          const { ignoreSuppression = false, animate = true } = opts;
+          if (!ignoreSuppression && isSuppressed()) return;
           const annotation = anno.getAnnotationById(annotationId);
-          if (annotation && annotation.target.selector.geometry) {
-            const { minX, minY, maxX, maxY } = annotation.target.selector.geometry.bounds;
+          if (annotation && annotation.target?.selector?.geometry && viewer?.viewport) {
+            const { minX, minY, maxX, maxY } = annotation.target.selector.geometry.bounds || {};
+            if ([minX, minY, maxX, maxY].some(v => typeof v !== 'number')) return;
             const centerX = minX + (maxX - minX) / 2;
             const centerY = minY + (maxY - minY) / 2;
             const imageCenter = new OpenSeadragon.Point(centerX, centerY);
+            const vpCenter = viewer.viewport.imageToViewportCoordinates(imageCenter);
+            // In OpenSeadragon, the second parameter is 'immediately'. Pass the inverse of 'animate'.
+            viewer.viewport.panTo(vpCenter, !animate);
+          }
+        };
 
-            // Convert image coordinates to viewport coordinates and pan.
-            viewer.viewport.panTo(viewer.viewport.imageToViewportCoordinates(imageCenter), false);
+        /**
+         * Fit the viewport to the annotation's bounds with optional padding.
+         * More reliable than a plain pan when returning via BFCache.
+         * @param {string} annotationId
+         * @param {{padding?: number, animate?: boolean, ignoreSuppression?: boolean}} [opts]
+         */
+        const fitToAnnotation = (annotationId, opts = {}) => {
+          const { padding = 0.1, animate = true, ignoreSuppression = true } = opts;
+          if (!ignoreSuppression && isSuppressed()) return;
+          const a = anno.getAnnotationById(annotationId);
+          if (!a || !a.target?.selector?.geometry || !viewer?.viewport) return;
+          const b = a.target.selector.geometry.bounds;
+          if (!b) return;
+          const w = (b.maxX - b.minX);
+          const h = (b.maxY - b.minY);
+          if (!(w > 0 && h > 0)) return;
+          // Build image-space rect then convert to viewport rect
+          const rectImg = new OpenSeadragon.Rect(b.minX, b.minY, w, h);
+          let rectVp = viewer.viewport.imageToViewportRectangle(rectImg);
+          // Apply padding by expanding around center
+          if (padding && padding > 0) {
+            const cx = rectVp.x + rectVp.width / 2;
+            const cy = rectVp.y + rectVp.height / 2;
+            rectVp = new OpenSeadragon.Rect(
+              cx - rectVp.width * (1 + padding) / 2,
+              cy - rectVp.height * (1 + padding) / 2,
+              rectVp.width * (1 + padding),
+              rectVp.height * (1 + padding)
+            );
+          }
+          try {
+            // 'immediately' flag is the second parameter; invert 'animate'.
+            viewer.viewport.fitBounds(rectVp, !animate);
+          } catch (_) { /* noop */ }
+        };
+
+        /**
+         * Recenter the viewport to the annotation center without zooming in.
+         * Optionally apply a zoom cap tied to the home zoom to keep magnification low.
+         * @param {string} annotationId
+         * @param {{animate?: boolean}} [opts]
+         */
+        const recenterWithoutZoom = (annotationId, opts = {}) => {
+          const { animate = true } = opts;
+          try {
+            if (!viewer?.viewport) return;
+            const vp = viewer.viewport;
+            // Set exact 1:1 zoom (native resolution), then pan to center.
+            const oneToOne = getOneToOneViewportZoom(viewer);
+            if (typeof oneToOne === 'number' && isFinite(oneToOne)) {
+              // zoomTo's third parameter is 'immediately' => invert 'animate'.
+              vp.zoomTo(oneToOne, null, !animate);
+            }
+            // Pan to center, ignoring suppression (programmatic focus)
+            panToAnnotation(annotationId, { ignoreSuppression: true, animate });
+          } catch (_) { /* noop */ }
+        };
+
+        // Run a callback after the current OSD pan/zoom animation finishes, with a timeout fallback.
+        const runAfterCurrentPan = (fn, maxWaitMs = 1400) => {
+          let executed = false;
+          const handler = () => {
+            if (executed) return;
+            executed = true;
+            try { viewer.removeHandler('animation-finish', handler); } catch (_) { /* noop */ }
+            try { fn && fn(); } catch (_) { /* noop */ }
+          };
+          try { viewer.addHandler('animation-finish', handler); } catch (_) { /* noop */ }
+          setTimeout(handler, maxWaitMs);
+        };
+
+        // --- Shared helpers for temporary word hull overlay -----------------
+        const clearTempWordAnnotation = () => {
+          try {
+            if (tempWordAnnotationId && anno.getAnnotationById(tempWordAnnotationId)) {
+              anno.removeAnnotation(tempWordAnnotationId);
+            }
+          } catch (_) { /* noop */ }
+          tempWordAnnotationId = null;
+        };
+
+        /**
+         * Draw a temporary convex hull for a word given points data.
+         * @param {string|Array} pointsData - JSON string or nested array of [x,y] points.
+         * @param {{ pan?: boolean, animate?: boolean }} [opts]
+         */
+        const showWordHull = (pointsData, opts = {}) => {
+          const { pan = true, animate = true } = opts;
+          clearTempWordAnnotation();
+          try {
+            if (typeof pointsData === 'string') {
+              pointsData = JSON.parse($('<textarea />').html(pointsData).text());
+            }
+            const flatPoints = pointsData.flat().filter(p => p && p.length > 0);
+            if (flatPoints.length > 0) {
+              const concavity = osdSettings.subsystemConfig?.hullConcavity ?? 20;
+              const hullApiUrl = `/wdb/api/hull?points=${encodeURIComponent(JSON.stringify(flatPoints))}&concavity=${concavity}`;
+              fetch(hullApiUrl)
+                .then(response => response.json())
+                .then(hullPoints => {
+                  if (hullPoints && hullPoints.length > 0) {
+                    tempWordAnnotationId = 'temp-word-hull-' + Date.now();
+                    const newAnnotation = {
+                      id: tempWordAnnotationId,
+                      type: 'Annotation',
+                      bodies: [],
+                      target: {
+                        selector: {
+                          type: 'POLYGON',
+                          geometry: {
+                            bounds: {
+                              minX: Math.min(...hullPoints.map(p => p[0])),
+                              minY: Math.min(...hullPoints.map(p => p[1])),
+                              maxX: Math.max(...hullPoints.map(p => p[0])),
+                              maxY: Math.max(...hullPoints.map(p => p[1])),
+                            },
+                            points: hullPoints,
+                          },
+                        },
+                      },
+                    };
+                    anno.addAnnotation(newAnnotation);
+                    safeSetSelected(newAnnotation.id);
+                    if (pan) {
+                      panToAnnotation(tempWordAnnotationId, { ignoreSuppression: true, animate });
+                    }
+                  }
+                });
+            }
+          } catch (e) {
+            console.error('Failed to render word hull:', e);
           }
         };
 
@@ -517,7 +722,7 @@
 
           panelContent.html(throbber);
 
-          $.get(url, (response) => {
+          const req = $.get(url, (response) => {
             if (response && response.title && response.content) {
               $('#wdb-annotation-panel-title').html(response.title);
               panelContent.html(response.content);
@@ -554,8 +759,8 @@
                     safeSetSelected(firstSignAnnotationUri);
                     lastPanelAnnotationId = firstSignAnnotationUri;
                     try { anno.setStyle(stylingFunction); } catch (_) { }
-                    // Do not pan while suppressed (prioritize user gesture)
-                    if (!isSuppressed()) panToAnnotation(firstSignAnnotationUri);
+                    // Panel-driven focus should always animate; bypass suppression.
+                    panToAnnotation(firstSignAnnotationUri, { ignoreSuppression: true, animate: true });
                   }
                 }
               }
@@ -567,6 +772,8 @@
           }).fail(() => {
             panelContent.html($('<p>').text(Drupal.t('Error: Could not load annotation details.')));
           });
+
+          return req;
         };
 
         /**
@@ -580,31 +787,155 @@
 
         // === Viewer and Annotorious Event Listeners ===
 
+        // Helper: apply highlight from URL (with optional short retry window).
+        // Normalize IDs for tolerant comparison: decode, strip scheme+host, keep pathname only.
+        const normalizeForCompare = (s) => {
+          if (typeof s !== 'string') return '';
+          let v = s.trim();
+          try { v = decodeURIComponent(v); } catch (_) { /* keep as-is */ }
+          try {
+            if (/^https?:\/\//i.test(v)) {
+              const u = new URL(v);
+              v = u.pathname || v;
+            } else if (/^\/\//.test(v)) {
+              const u = new URL('http:' + v);
+              v = u.pathname || v.replace(/^\/\//, '');
+            }
+          } catch (_) { /* keep v as-is */ }
+          if (v.length > 1 && v.endsWith('/')) v = v.slice(0, -1);
+          return v;
+        };
+
+        // Try to find an annotation id by tolerant match against loaded annotations
+        const findAnnotationIdLoose = (targetId) => {
+          if (!targetId || typeof anno?.getAnnotations !== 'function') return null;
+          let anns;
+          try { anns = anno.getAnnotations(); } catch (_) { anns = []; }
+          if (!Array.isArray(anns) || anns.length === 0) return null;
+          const targetNorm = normalizeForCompare(targetId);
+          // Precompute a map of normalized->actual id
+          const map = new Map();
+          for (const a of anns) {
+            const aid = a?.id || a?.['@id'] || null;
+            if (!aid || typeof aid !== 'string') continue;
+            const n = normalizeForCompare(aid);
+            if (!map.has(n)) map.set(n, aid);
+            // Also index by last path segment and by '/wdb/label/{id}' tail when possible
+            try {
+              const seg = n.split('/').filter(Boolean).pop();
+              if (seg && !map.has(seg)) map.set(seg, aid);
+              const labelIdx = n.lastIndexOf('/label/');
+              if (labelIdx !== -1) {
+                const tail = n.substring(labelIdx);
+                if (tail && !map.has(tail)) map.set(tail, aid);
+              }
+            } catch (_) { /* noop */ }
+          }
+          if (map.has(targetNorm)) return map.get(targetNorm);
+          // Try lookup by last segment and label tail for the target as well
+          try {
+            const seg = targetNorm.split('/').filter(Boolean).pop();
+            if (seg && map.has(seg)) return map.get(seg);
+            const labelIdx = targetNorm.lastIndexOf('/label/');
+            if (labelIdx !== -1) {
+              const tail = targetNorm.substring(labelIdx);
+              if (map.has(tail)) return map.get(tail);
+            }
+          } catch (_) { /* noop */ }
+          return null;
+        };
+
+        const tryApplyHighlightFromUrl = (maxRetries = 0, delayMs = 120) => {
+          const highlightId = getHighlightAnnotationFromUrl();
+          if (!highlightId) return;
+          const apply = () => {
+            try {
+              let idToUse = null;
+              if (anno && typeof anno.getAnnotationById === 'function') {
+                const direct = anno.getAnnotationById(highlightId);
+                if (direct) {
+                  idToUse = highlightId;
+                } else {
+                  const loose = findAnnotationIdLoose(highlightId);
+                  if (loose) idToUse = loose;
+                }
+              }
+              if (idToUse) {
+                // Sequence: FullText -> AnnotationPanel -> Selection & Pan
+                const doSelectionAndPan = () => {
+                  safeSetSelected(idToUse);
+                  lastPanelAnnotationId = idToUse;
+                  try { anno.setStyle(stylingFunction); } catch (_) { /* noop */ }
+                  const startPan = () => {
+                    try { if (viewer && viewer.forceRedraw) viewer.forceRedraw(); } catch (_) { /* noop */ }
+                    withTempAnimation(1.2, () => {
+                      withTempSpring(4.0, () => {
+                        panToAnnotation(idToUse, { ignoreSuppression: true, animate: true });
+                      });
+                    });
+                  };
+                  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => startPan());
+                  else setTimeout(startPan, 50);
+                };
+                const afterText = () => {
+                  if (osdSettings?.context?.subsysname) {
+                    const req = updateAnnotationPanel(osdSettings.context.subsysname, idToUse, false);
+                    if (req && typeof req.done === 'function') req.done(() => doSelectionAndPan());
+                    else setTimeout(() => doSelectionAndPan(), 50);
+                  } else {
+                    doSelectionAndPan();
+                  }
+                };
+                onFullTextReady(afterText);
+                return true;
+              }
+            } catch (_) { /* noop */ }
+            return false;
+          };
+          if (apply()) return;
+          // Retry a few times in case annotations restore slightly after pageshow
+          let retries = Math.max(0, maxRetries);
+          if (retries > 0) {
+            const tick = () => {
+              if (apply()) return;
+              retries -= 1;
+              if (retries > 0) setTimeout(tick, delayMs);
+            };
+            setTimeout(tick, delayMs);
+          }
+        };
+
         // Load annotations and full text when the viewer opens.
         viewer.addHandler('open', () => {
           if (osdSettings.annotationListUrl) {
             anno.loadAnnotations(osdSettings.annotationListUrl)
               .then(() => {
                 // If a highlight parameter is in the URL, select and pan to it.
-                const highlightId = getHighlightAnnotationFromUrl();
-                if (highlightId) {
-                  viewer.addOnceHandler('animation-finish', () => {
-                    safeSetSelected(highlightId);
-                    updateAnnotationPanel(osdSettings.context.subsysname, highlightId, false);
-                  });
-                  panToAnnotation(highlightId);
-                }
+                tryApplyHighlightFromUrl(0);
               });
           }
           if (osdSettings.context) {
             const { subsysname, source, page } = osdSettings.context;
             const fullTextUrl = Drupal.url(`wdb/ajax/full_text/${subsysname}/${source}/${page}`);
-            $.get(fullTextUrl).done(response => {
-              if (response && response.html) {
-                $('#wdb-full-text-content').html(response.html);
-              }
-            });
+            $.get(fullTextUrl)
+              .done(response => {
+                if (response && response.html) {
+                  $('#wdb-full-text-content').html(response.html);
+                }
+              })
+              .always(() => { markFullTextReady(); });
           }
+        });
+
+        // Handle BFCache / back-forward navigation: pageshow fires even when DOMContentLoaded doesn't.
+        // Re-apply highlight if requested in the URL, and nudge OSD to redraw.
+        window.addEventListener('pageshow', (ev) => {
+          try {
+            // Nudge redraw after BFCache restore
+            scheduleFastRedraw();
+            // Try to re-apply highlight; retry a few times if needed
+            tryApplyHighlightFromUrl(8, 120);
+          } catch (_) { /* noop */ }
         });
 
         // Handle clicks on annotations in the viewer (mouse or synthesized). Keep lightweight duplicate guard.
@@ -785,60 +1116,6 @@
 
             const clickedElement = $(this);
 
-            const clearTempWordAnnotation = () => {
-              if (tempWordAnnotationId && anno.getAnnotationById(tempWordAnnotationId)) {
-                anno.removeAnnotation(tempWordAnnotationId);
-              }
-              tempWordAnnotationId = null;
-            };
-
-            // Dynamically displays a word's hull polygon.
-            const showWordHull = (pointsData) => {
-              clearTempWordAnnotation();
-              try {
-                if (typeof pointsData === 'string') {
-                  pointsData = JSON.parse($('<textarea />').html(pointsData).text());
-                }
-                const flatPoints = pointsData.flat().filter(p => p && p.length > 0);
-                if (flatPoints.length > 0) {
-                  const concavity = osdSettings.subsystemConfig.hullConcavity ?? 20;
-                  const hullApiUrl = `/wdb/api/hull?points=${encodeURIComponent(JSON.stringify(flatPoints))}&concavity=${concavity}`;
-                  fetch(hullApiUrl)
-                    .then(response => response.json())
-                    .then(hullPoints => {
-                      if (hullPoints && hullPoints.length > 0) {
-                        tempWordAnnotationId = 'temp-word-hull-' + Date.now();
-                        const newAnnotation = {
-                          id: tempWordAnnotationId,
-                          type: 'Annotation',
-                          bodies: [],
-                          target: {
-                            selector: {
-                              type: 'POLYGON',
-                              geometry: {
-                                bounds: {
-                                  minX: Math.min(...hullPoints.map(p => p[0])),
-                                  minY: Math.min(...hullPoints.map(p => p[1])),
-                                  maxX: Math.max(...hullPoints.map(p => p[0])),
-                                  maxY: Math.max(...hullPoints.map(p => p[1])),
-                                },
-                                points: hullPoints,
-                              },
-                            },
-                          },
-                        };
-                        anno.addAnnotation(newAnnotation);
-                        safeSetSelected(newAnnotation.id);
-                        panToAnnotation(tempWordAnnotationId);
-                      }
-                    });
-                }
-              }
-              catch (e) {
-                console.error('Failed to handle word click:', e);
-              }
-            };
-
             // Best-effort: clear any existing Annotorious selection
             const clearAnnoSelection = () => {
               try {
@@ -885,7 +1162,8 @@
                 // Mark as confirmed selection immediately so styling shows it even before Ajax completes
                 lastPanelAnnotationId = annotationId;
                 try { anno.setStyle(stylingFunction); } catch (_) { }
-                panToAnnotation(annotationId);
+                // Panel-driven sign focus: always animate and bypass suppression
+                panToAnnotation(annotationId, { ignoreSuppression: true, animate: true });
                 if (osdSettings?.context?.subsysname) {
                   updateAnnotationPanel(osdSettings.context.subsysname, annotationId, false);
                 }
@@ -923,19 +1201,21 @@
 
         // Keyboard accessibility for drawer mode.
         document.addEventListener('keydown', (e) => {
-          if (!mainContainer) return;
-          if (mainContainer.dataset.mode !== 'drawer') return;
-          if (e.key === ' ' || e.key === 'Enter') {
-            // Avoid toggling while typing in inputs.
+          try {
+            if (!mainContainer) return;
+            if (mainContainer.dataset.mode !== 'drawer') return;
+            if (e.key !== ' ' && e.key !== 'Enter') return;
+            // Avoid toggling while typing in inputs or editable regions.
             const ae = document.activeElement;
             const isEditable = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable);
-            if (!isEditable) {
-              e.preventDefault();
-              toggleDrawerOpen();
-            }
-          }
+            if (isEditable) return;
+            toggleDrawerOpen();
+            e.preventDefault();
+          } catch (_) { /* noop */ }
         });
-      });
-    },
+
+      }); // end once('openseadragon-viewer-init') forEach
+    }
   };
-})(jQuery, Drupal, window.OpenSeadragon, window.AnnotoriousOSD, drupalSettings, once);
+
+})(jQuery, Drupal, OpenSeadragon, AnnotoriousOSD, drupalSettings, once);

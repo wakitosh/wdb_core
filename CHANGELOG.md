@@ -2,6 +2,16 @@
 
 All notable changes to WDB Core will be documented in this file.
 
+## [1.5.4] - 2025-11-04
+
+### Changed
+- Viewer: URL リターン時のシーケンスを整理し、フルテキスト読込 → アノテーションパネル更新 → 対象文字の選択＆中央パンの順に実行して、アニメーションの引っかかりを解消。
+- Viewer: パン開始前の `forceRedraw`、`requestAnimationFrame` 起動、短時間の一時アニメーション/スプリング調整でスムーズさを向上。
+
+### Fixed
+- Viewer: cross-domain なラベル ID でも一致しやすいよう ID 正規化（パスのみ比較、末尾セグメント、`/label/{id}` テイル照合）を強化。
+- Viewer: Drawer モードのキーボードハンドラに紛れ込んだ不要コードを除去し、構文エラーを修正（Space/Enter でのドロワー開閉を正常化）。
+
 ## [1.5.3] - 2025-09-10
 
 ### Added
@@ -73,3 +83,4 @@ All notable changes to WDB Core will be documented in this file.
 [1.5.0]: https://github.com/wakitosh/wdb_module/releases/tag/1.5.0
 [1.5.2]: https://github.com/wakitosh/wdb_module/releases/tag/1.5.2
 [1.5.3]: https://github.com/wakitosh/wdb_module/releases/tag/1.5.3
+[1.5.4]: https://github.com/wakitosh/wdb_module/releases/tag/1.5.4

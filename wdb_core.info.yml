@@ -4,7 +4,7 @@ type: module
 description: 'Core services, configuration, and base functionality for the WDB application.'
 package: WDB
 core_version_requirement: ^10 || ^11
-version: 1.5.3
+version: 1.5.4
 dependencies:
   - drupal:taxonomy
   - drupal:content_translation
