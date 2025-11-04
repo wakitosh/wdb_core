@@ -676,6 +676,8 @@
                 .then(response => response.json())
                 .then(hullPoints => {
                   if (hullPoints && hullPoints.length > 0) {
+                    // Clear any existing selection so only the hull is highlighted
+                    try { if (typeof anno.clearSelected === 'function') anno.clearSelected(); } catch (_) { /* noop */ }
                     tempWordAnnotationId = 'temp-word-hull-' + Date.now();
                     const newAnnotation = {
                       id: tempWordAnnotationId,
@@ -698,8 +700,16 @@
                     };
                     anno.addAnnotation(newAnnotation);
                     safeSetSelected(newAnnotation.id);
+                    // Mark as the current confirmed selection for styling during suppression windows
+                    lastPanelAnnotationId = newAnnotation.id;
+                    try { anno.setStyle(stylingFunction); } catch (_) { /* noop */ }
                     if (pan) {
-                      panToAnnotation(tempWordAnnotationId, { ignoreSuppression: true, animate });
+                      try { if (viewer && viewer.forceRedraw) viewer.forceRedraw(); } catch (_) { /* noop */ }
+                      withTempAnimation(1.2, () => {
+                        withTempSpring(4.0, () => {
+                          panToAnnotation(tempWordAnnotationId, { ignoreSuppression: true, animate });
+                        });
+                      });
                     }
                   }
                 });
@@ -861,29 +871,44 @@
                 }
               }
               if (idToUse) {
-                // Sequence: FullText -> AnnotationPanel -> Selection & Pan
-                const doSelectionAndPan = () => {
-                  safeSetSelected(idToUse);
-                  lastPanelAnnotationId = idToUse;
-                  try { anno.setStyle(stylingFunction); } catch (_) { /* noop */ }
-                  const startPan = () => {
-                    try { if (viewer && viewer.forceRedraw) viewer.forceRedraw(); } catch (_) { /* noop */ }
-                    withTempAnimation(1.2, () => {
-                      withTempSpring(4.0, () => {
-                        panToAnnotation(idToUse, { ignoreSuppression: true, animate: true });
-                      });
-                    });
-                  };
-                  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => startPan());
-                  else setTimeout(startPan, 50);
+                // Sequence: FullText -> AnnotationPanel -> Concave Word Hull (select & pan)
+                const doConcaveHull = () => {
+                  try {
+                    const fullTextPanel = $('#wdb-full-text-content');
+                    // updateAnnotationPanel sets .is-highlighted on the current word
+                    let wordEl = fullTextPanel.find('.word-unit.is-highlighted').first();
+                    const rawAttr = wordEl && wordEl.length ? wordEl.attr('data-word-points') : null;
+                    if (rawAttr) {
+                      clearTempWordAnnotation();
+                      // Ensure previous character selection is cleared so only the hull shows
+                      try { if (typeof anno.clearSelected === 'function') anno.clearSelected(); } catch (_) { /* noop */ }
+                      lastPanelAnnotationId = null;
+                      showWordHull(rawAttr, { pan: true, animate: true });
+                    } else {
+                      // Fallback: select & pan to the character annotation
+                      safeSetSelected(idToUse);
+                      lastPanelAnnotationId = idToUse;
+                      try { anno.setStyle(stylingFunction); } catch (_) { /* noop */ }
+                      const startPan = () => {
+                        try { if (viewer && viewer.forceRedraw) viewer.forceRedraw(); } catch (_) { /* noop */ }
+                        withTempAnimation(1.2, () => {
+                          withTempSpring(4.0, () => {
+                            panToAnnotation(idToUse, { ignoreSuppression: true, animate: true });
+                          });
+                        });
+                      };
+                      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => startPan());
+                      else setTimeout(startPan, 50);
+                    }
+                  } catch (_) { /* noop */ }
                 };
                 const afterText = () => {
                   if (osdSettings?.context?.subsysname) {
                     const req = updateAnnotationPanel(osdSettings.context.subsysname, idToUse, false);
-                    if (req && typeof req.done === 'function') req.done(() => doSelectionAndPan());
-                    else setTimeout(() => doSelectionAndPan(), 50);
+                    if (req && typeof req.done === 'function') req.done(() => doConcaveHull());
+                    else setTimeout(() => doConcaveHull(), 50);
                   } else {
-                    doSelectionAndPan();
+                    doConcaveHull();
                   }
                 };
                 onFullTextReady(afterText);

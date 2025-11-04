@@ -2,6 +2,26 @@
 
 All notable changes to WDB Core will be documented in this file.
 
+## [1.5.5] - 2025-11-05
+
+### English
+#### Changed
+- Viewer: On URL return, select and center-pan the concave word hull built from full-text word points; removed the character polygon overlay for a cleaner focus.
+- Viewer: Kept the safe sequence (Full Text → Annotation Panel → selection & pan) and applied short-lived animation/spring tuning only during hull pan for smoothness.
+
+#### Fixed
+- Viewer: Cleared any previous Annotorious selection before drawing the word hull to avoid dual highlights.
+- Viewer: Added a fallback to character selection when word points are not available.
+
+### 日本語
+#### 変更
+- Viewer: 検索からの復帰時、フルテキストの word points から生成した単語の凹包を選択＆中央パンし、文字ポリゴンの重複表示を廃止。
+- Viewer: テキスト → パネル → 選択＆パンの順序を維持しつつ、凹包へのパンに限って短時間の一時アニメーション/スプリング調整を適用して滑らかさを確保。
+
+#### 修正
+- Viewer: 凹包描画の前に既存の Annotorious 選択をクリアし、二重ハイライトを防止。
+- Viewer: word points が取得できない場合は、従来どおり文字ポリゴンへの選択＆パンにフォールバック。
+
 ## [1.5.4] - 2025-11-04
 
 ### English
