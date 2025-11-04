@@ -4,11 +4,21 @@ All notable changes to WDB Core will be documented in this file.
 
 ## [1.5.4] - 2025-11-04
 
-### Changed
+### English
+#### Changed
+- Viewer: Streamlined the URL-return sequence to run Full Text → Annotation Panel → character selection & center pan, eliminating animation hitching.
+- Viewer: Improved smoothness by calling `forceRedraw` before pan, kicking off via `requestAnimationFrame`, and applying short-lived animation/spring tuning.
+
+#### Fixed
+- Viewer: Strengthened cross-domain label ID matching by normalizing IDs (pathname-only compare, last segment, and `/label/{id}` tail matching).
+- Viewer: Removed stray code from the drawer keyboard handler and fixed a syntax error; Space/Enter now reliably toggle the drawer.
+
+### 日本語
+#### 変更
 - Viewer: URL リターン時のシーケンスを整理し、フルテキスト読込 → アノテーションパネル更新 → 対象文字の選択＆中央パンの順に実行して、アニメーションの引っかかりを解消。
 - Viewer: パン開始前の `forceRedraw`、`requestAnimationFrame` 起動、短時間の一時アニメーション/スプリング調整でスムーズさを向上。
 
-### Fixed
+#### 修正
 - Viewer: cross-domain なラベル ID でも一致しやすいよう ID 正規化（パスのみ比較、末尾セグメント、`/label/{id}` テイル照合）を強化。
 - Viewer: Drawer モードのキーボードハンドラに紛れ込んだ不要コードを除去し、構文エラーを修正（Space/Enter でのドロワー開閉を正常化）。
 
