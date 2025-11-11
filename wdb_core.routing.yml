@@ -120,6 +120,15 @@ wdb_core.hull_api:
   requirements:
     _access: 'TRUE'
 
+# Bounding box API endpoint.
+wdb_core.bbox_api:
+  path: '/wdb/api/bbox'
+  defaults:
+    _controller: 'wdb_core.export_controller:calculateBboxApi'
+  methods: [GET]
+  requirements:
+    _access: 'TRUE'
+
 # Get annotation list for Annotorious v3.
 wdb_core.annotation_search:
   path: '/wdb/api/annotation/search'

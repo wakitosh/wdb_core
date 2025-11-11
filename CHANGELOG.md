@@ -2,6 +2,22 @@
 
 All notable changes to WDB Core will be documented in this file.
 
+## [1.5.6] - 2025-11-11
+
+### English
+#### Added
+- API: New `GET /wdb/api/bbox` endpoint returning a bounding box `{x,y,w,h}` for an arbitrary set of points passed as `points=["x,y", ...]` (JSON array). Complements existing concave hull endpoint for lighter-weight region needs.
+
+#### Changed
+- Internal: Refactored export controller to host both hull and bbox calculators for symmetry; docblocks clarified.
+
+### 日本語
+#### 追加
+- API: 任意の点集合に対しバウンディングボックス `{x,y,w,h}` を返す `GET /wdb/api/bbox` エンドポイントを追加。`points=["x,y", ...]` (JSON配列) を渡す軽量な領域取得手段。既存の凹包APIを補完。
+
+#### 変更
+- 内部: Hull と BBox 計算を ExportController 内に整理し、双方の役割を明確化。DocBlock を調整。
+
 ## [1.5.5] - 2025-11-05
 
 ### English

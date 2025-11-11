@@ -258,6 +258,32 @@ If a future project phase requires making the function name mandatory, it can be
 
 The module is designed to be extensible. For example, you can use standard Drupal hooks like `hook_entity_insert()` to react to the creation of new `subsystem` taxonomy terms, as demonstrated for creating default configurations.
 
+### **API Endpoints**
+
+The core module exposes a couple of lightweight, read-only endpoints to support client-side geometry utilities. All endpoints are open to GET requests and return JSON. Remember to URL-encode JSON passed via query parameters (examples below are already encoded).
+
+- GET `/wdb/api/hull`
+  - Purpose: Compute a concave hull for an arbitrary point set.
+  - Query parameters:
+    - `points` (required): JSON array of strings in the form `"X,Y"`, e.g. `["10,20","30,40","25,35"]`.
+    - `concavity` (optional, integer): Hull tightness. `0` yields a convex hull. Higher values produce looser hulls. Default: `20`.
+  - Response: JSON array of 2D points `[[x1, y1], [x2, y2], ...]` (numbers).
+  - Errors: `400` with `{ "error": "..." }` if `points` is missing or invalid.
+  - Example URL:
+    - Concave (concavity=20):
+      `/wdb/api/hull?points=%5B%2210%2C20%22%2C%2230%2C40%22%2C%2225%2C35%22%2C%2215%2C22%22%5D&concavity=20`
+    - Convex (concavity=0):
+      `/wdb/api/hull?points=%5B%2210%2C20%22%2C%2230%2C40%22%2C%2225%2C35%22%2C%2215%2C22%22%5D&concavity=0`
+
+- GET `/wdb/api/bbox`
+  - Purpose: Compute an axis-aligned bounding box for an arbitrary point set.
+  - Query parameters:
+    - `points` (required): JSON array of strings in the form `"X,Y"`.
+  - Response: JSON object `{ x, y, w, h }` where `(x, y)` is the top-left, `w` is width, and `h` is height. Values are rounded to integers; `w`/`h` are at least `1`.
+  - Errors: `400` with `{ "error": "..." }` if `points` is missing or invalid.
+  - Example URL:
+    `/wdb/api/bbox?points=%5B%2210%2C20%22%2C%2230%2C40%22%2C%2225%2C35%22%2C%2215%2C22%22%5D`
+
 ## **1\. 概要**
 
 Word-Database (WDB) Core モジュールは、言語学者、歴史学者、文献学者、そしてデジタル・ヒューマニティーズの研究者のために設計された、Drupalのための包括的なツールキットです。WDBの最も重要な特徴は、その柔軟性です。**様々な時代や地域の複数の言語資料を、単一の統一されたプラットフォーム上で取り扱うことができます。**
@@ -514,3 +540,29 @@ WDBモジュールは、豊富なカスタムコンテントエンティティ�
 ### **モジュールの拡張**
 
 このモジュールは、拡張性を考慮して設計されています。例えば、`hook_entity_insert()`のような標準的なDrupalのフックを使い、新しい`subsystem`タクソノミータームが作成された際の処理（デフォルト設定の作成など）を実装しています。
+
+### **APIエンドポイント**
+
+クライアント側の幾何ユーティリティを支援するため、読み取り専用の軽量APIを提供します。いずれも GET でアクセスし、JSON を返します。クエリ文字列で JSON を渡す場合は URL エンコードが必要です（以下の例はエンコード済み）。
+
+- GET `/wdb/api/hull`
+  - 目的: 任意の点集合に対する凹包（concave hull）を計算します。
+  - クエリパラメータ:
+    - `points`（必須）: `"X,Y"` 形式の文字列からなる JSON 配列。例: `["10,20","30,40","25,35"]`。
+    - `concavity`（任意・整数）: 凹みの強さ（小さいほどきつい/0で凸包）。値が大きいほど外形がゆるくなります。デフォルト: `20`。
+  - レスポンス: 2次元点の配列 `[[x1, y1], [x2, y2], ...]`（数値）。
+  - エラー: `points` が不足・不正な場合は `400` と `{ "error": "..." }` を返します。
+  - URL例:
+    - 凹包（concavity=20）:
+      `/wdb/api/hull?points=%5B%2210%2C20%22%2C%2230%2C40%22%2C%2225%2C35%22%2C%2215%2C22%22%5D&concavity=20`
+    - 凸包（concavity=0）:
+      `/wdb/api/hull?points=%5B%2210%2C20%22%2C%2230%2C40%22%2C%2225%2C35%22%2C%2215%2C22%22%5D&concavity=0`
+
+- GET `/wdb/api/bbox`
+  - 目的: 任意の点集合の軸平行バウンディングボックスを計算します。
+  - クエリパラメータ:
+    - `points`（必須）: `"X,Y"` 形式の文字列からなる JSON 配列。
+  - レスポンス: `{ x, y, w, h }`（左上 `(x,y)`、幅 `w`、高さ `h`）。値は整数に丸められ、`w`/`h` は最低でも `1` となります。
+  - エラー: `points` が不足・不正な場合は `400` と `{ "error": "..." }` を返します。
+  - URL例:
+    `/wdb/api/bbox?points=%5B%2210%2C20%22%2C%2230%2C40%22%2C%2225%2C35%22%2C%2215%2C22%22%5D`

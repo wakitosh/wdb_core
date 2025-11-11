@@ -221,6 +221,57 @@ class ExportController extends ControllerBase implements ContainerInjectionInter
   }
 
   /**
+   * API endpoint to calculate a bounding box from a set of points.
+   *
+   * Accepts a GET parameter "points" (JSON array of "X,Y" strings).
+   * Returns { x, y, w, h } where (x,y) is top-left and (w,h) width/height.
+   *
+   * Example:
+   *   /wdb/api/bbox?points=["10,20","30,40","25,35"]
+   *
+   * @param \Symfony\Component\HttpFoundation\Request $request
+   *   The current request.
+   *
+   * @return \Symfony\Component\HttpFoundation\JsonResponse
+   *   A JSON response with the bounding box or an error.
+   */
+  public function calculateBboxApi(Request $request): JsonResponse {
+    $points_json = $request->query->get('points');
+    if (empty($points_json)) {
+      return new JsonResponse(['error' => 'Missing "points" parameter.'], 400);
+    }
+
+    $points_strings = json_decode($points_json, TRUE);
+    if (json_last_error() !== JSON_ERROR_NONE || !is_array($points_strings)) {
+      return new JsonResponse(['error' => 'Invalid "points" JSON format.'], 400);
+    }
+
+    $all_x = [];
+    $all_y = [];
+    foreach ($points_strings as $point_str) {
+      $coords = explode(',', $point_str);
+      if (count($coords) === 2 && is_numeric($coords[0]) && is_numeric($coords[1])) {
+        $all_x[] = (float) $coords[0];
+        $all_y[] = (float) $coords[1];
+      }
+    }
+    if (empty($all_x)) {
+      return new JsonResponse(['error' => 'No valid points found.'], 400);
+    }
+    $min_x = min($all_x);
+    $max_x = max($all_x);
+    $min_y = min($all_y);
+    $max_y = max($all_y);
+    $bbox = [
+      'x' => round($min_x),
+      'y' => round($min_y),
+      'w' => max(1, round($max_x - $min_x)),
+      'h' => max(1, round($max_y - $min_y)),
+    ];
+    return new JsonResponse($bbox);
+  }
+
+  /**
    * Gets the first annotation URI for a given Word Unit original ID.
    *
    * @param string $wdb_word_unit_original_id
