@@ -1,0 +1,6 @@
+wdb_cantaloupe_auth.settings_link:
+  title: 'Cantaloupe authentication'
+  description: 'Configure IIIF token lifetime and query parameter.'
+  parent: wdb_core.config_links
+  route_name: wdb_cantaloupe_auth.settings
+  weight: 20

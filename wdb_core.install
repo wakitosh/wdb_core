@@ -453,3 +453,16 @@ function wdb_core_update_10004() {
     '@normalized' => $normalized_total,
   ]);
 }
+
+/**
+ * Implements hook_update_N().
+ *
+ * Ensure the Group module is enabled before applying further schema changes.
+ */
+function wdb_core_update_10005() {
+  if (!\Drupal::moduleHandler()->moduleExists('group')) {
+    throw new \RuntimeException(t('The Group module must be installed and enabled before updating WDB Core. Enable it (for example via "drush en group") and rerun database updates.'));
+  }
+
+  return t('Verified that the Group module is enabled before continuing WDB Core updates.');
+}

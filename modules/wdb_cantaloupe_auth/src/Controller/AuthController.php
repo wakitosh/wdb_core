@@ -190,8 +190,8 @@ class AuthController extends ControllerBase implements ContainerInjectionInterfa
 
     $token_payload = $this->tokenManager->validateToken($token);
     if (!$token_payload) {
-      $logger->warning('Invalid or expired IIIF token presented for identifier @id.', ['@id' => $identifier]);
-      return new JsonResponse(['authorized' => FALSE, 'reason' => 'Invalid or expired token.']);
+      $logger->warning('Invalid or expired IIIF token presented for identifier @id. Falling back to session lookup.', ['@id' => $identifier]);
+      return NULL;
     }
 
     $token_subsystem = strtolower((string) ($token_payload['s'] ?? ''));
@@ -201,7 +201,7 @@ class AuthController extends ControllerBase implements ContainerInjectionInterfa
         '@expected' => $subsysname,
         '@actual' => $token_payload['s'] ?? 'n/a',
       ]);
-      return new JsonResponse(['authorized' => FALSE, 'reason' => 'Token subsystem mismatch.']);
+      return NULL;
     }
 
     if (($token_payload['i'] ?? '') !== $identifier) {
@@ -209,13 +209,13 @@ class AuthController extends ControllerBase implements ContainerInjectionInterfa
         '@expected' => $identifier,
         '@actual' => $token_payload['i'] ?? 'n/a',
       ]);
-      return new JsonResponse(['authorized' => FALSE, 'reason' => 'Token identifier mismatch.']);
+      return NULL;
     }
 
     $uid = (int) ($token_payload['u'] ?? 0);
     if ($uid <= 0) {
       $logger->warning('Token missing user context for identifier @id.', ['@id' => $identifier]);
-      return new JsonResponse(['authorized' => FALSE, 'reason' => 'Token missing user context.']);
+      return NULL;
     }
 
     $user = $this->entityTypeManager()->getStorage('user')->load($uid);

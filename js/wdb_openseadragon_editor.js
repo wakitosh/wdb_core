@@ -8,10 +8,13 @@
 
   function createIiifTokenHelper(authConfig) {
     const config = authConfig || {};
-    const token = (typeof config.token === 'string' && config.token.length) ? config.token : null;
-    const paramName = (typeof config.param === 'string' && config.param.length)
+    let token = (typeof config.token === 'string' && config.token.length) ? config.token : null;
+    let paramName = (typeof config.param === 'string' && config.param.length)
       ? config.param
       : ((typeof config.parameter === 'string' && config.parameter.length) ? config.parameter : 'wdb_token');
+    const refreshUrl = (typeof config.refreshUrl === 'string' && config.refreshUrl.length) ? config.refreshUrl : null;
+    const ttlValue = Number(config.ttl);
+    const ttlSeconds = Number.isFinite(ttlValue) && ttlValue > 0 ? ttlValue : null;
 
     if (!token) {
       return {
@@ -19,12 +22,82 @@
         appendToken: (url) => url,
         normalizeTileSources: (value) => value,
         attachViewer: () => { },
+        startAutoRefresh: () => { },
       };
     }
 
     const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const paramRegex = new RegExp(`([?&])${escapeRegex(paramName)}=([^&#]*)`);
-    const encodedToken = encodeURIComponent(token);
+    const buildParamRegex = () => new RegExp(`([?&])${escapeRegex(paramName)}=([^&#]*)`);
+    let paramRegex = buildParamRegex();
+    let encodedToken = encodeURIComponent(token);
+    let refreshTimer = null;
+    let isRefreshing = false;
+
+    const applyNewToken = (nextToken, maybeParam) => {
+      if (typeof nextToken !== 'string' || !nextToken.length) {
+        return false;
+      }
+      token = nextToken;
+      encodedToken = encodeURIComponent(token);
+      if (typeof maybeParam === 'string' && maybeParam.length && maybeParam !== paramName) {
+        paramName = maybeParam;
+        paramRegex = buildParamRegex();
+      }
+      return true;
+    };
+
+    const refreshToken = () => {
+      if (!refreshUrl || isRefreshing) {
+        return;
+      }
+      isRefreshing = true;
+      window.fetch(refreshUrl, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+        credentials: 'same-origin',
+      })
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          return response.json();
+        })
+        .then((payload) => {
+          if (!applyNewToken(payload?.token, payload?.param)) {
+            throw new Error('Token missing in response');
+          }
+          scheduleRefresh();
+        })
+        .catch(() => {
+          const retryMs = Math.min(30000, (ttlSeconds || 10) * 1000);
+          if (refreshTimer) {
+            window.clearTimeout(refreshTimer);
+          }
+          refreshTimer = window.setTimeout(() => { refreshToken(); }, retryMs);
+        })
+        .finally(() => {
+          isRefreshing = false;
+        });
+    };
+
+    const scheduleRefresh = () => {
+      if (!refreshUrl || !ttlSeconds || !token) {
+        return;
+      }
+      if (refreshTimer) {
+        window.clearTimeout(refreshTimer);
+      }
+      const margin = Math.min(30, Math.max(2, Math.floor(ttlSeconds * 0.25)));
+      const waitMs = Math.max(1000, (ttlSeconds - margin) * 1000);
+      refreshTimer = window.setTimeout(() => { refreshToken(); }, waitMs);
+    };
+
+    const startAutoRefresh = () => {
+      if (!refreshUrl || !ttlSeconds || !token) {
+        return;
+      }
+      scheduleRefresh();
+    };
 
     const appendToken = (url) => {
       if (!url || typeof url !== 'string') {
@@ -107,6 +180,7 @@
       appendToken,
       normalizeTileSources,
       attachViewer: patchViewerSources,
+      startAutoRefresh,
     };
   }
 
@@ -168,6 +242,9 @@
           });
 
           iiifTokenHelper.attachViewer(viewer);
+          if (typeof iiifTokenHelper.startAutoRefresh === 'function') {
+            iiifTokenHelper.startAutoRefresh();
+          }
 
           const anno = AnnotoriousOSD.createOSDAnnotator(viewer, {
             drawingEnabled: false,

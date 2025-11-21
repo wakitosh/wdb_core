@@ -170,9 +170,9 @@ class TokenManager implements TokenManagerInterface {
   }
 
   /**
-   * Returns the configured token TTL in seconds.
+   * {@inheritdoc}
    */
-  protected function getTtl(): int {
+  public function getTtl(): int {
     $ttl = (int) $this->settings->get('token_ttl');
     return $ttl > 0 ? $ttl : 600;
   }

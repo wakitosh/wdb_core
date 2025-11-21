@@ -240,6 +240,11 @@ class AnnotationEditController extends ControllerBase implements ContainerInject
       'toolbarUrls' => $toolbar_urls,
     ];
     if (!empty($iiif_auth_context)) {
+      $iiif_auth_context['refreshUrl'] = Url::fromRoute(
+        'wdb_cantaloupe_auth.token_refresh',
+        ['wdb_annotation_page' => $wdb_annotation_page_entity->id()],
+        ['absolute' => TRUE]
+      )->toString();
       $osd_settings['auth'] = $iiif_auth_context;
     }
 

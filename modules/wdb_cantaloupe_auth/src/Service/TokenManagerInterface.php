@@ -57,4 +57,12 @@ interface TokenManagerInterface {
    */
   public function validateToken(string $token): ?array;
 
+  /**
+   * Returns the configured TTL for newly issued tokens, in seconds.
+   *
+   * @return int
+   *   The effective TTL (always > 0).
+   */
+  public function getTtl(): int;
+
 }

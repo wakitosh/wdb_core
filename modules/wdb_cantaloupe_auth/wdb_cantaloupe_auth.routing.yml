@@ -5,3 +5,22 @@ wdb_cantaloupe_auth.authorize:
   methods: [POST]
   requirements:
     _access: 'TRUE'
+
+wdb_cantaloupe_auth.settings:
+  path: '/admin/config/wdb/cantaloupe-auth'
+  defaults:
+    _form: '\Drupal\wdb_cantaloupe_auth\Form\TokenSettingsForm'
+    _title: 'Cantaloupe authentication'
+  requirements:
+    _permission: 'administer wdb configuration'
+
+wdb_cantaloupe_auth.token_refresh:
+  path: '/wdb/api/cantaloupe_auth/token/{wdb_annotation_page}'
+  defaults:
+    _controller: '\Drupal\wdb_cantaloupe_auth\Controller\TokenController::refresh'
+  requirements:
+    _permission: 'access content'
+  options:
+    parameters:
+      wdb_annotation_page:
+        type: entity:wdb_annotation_page

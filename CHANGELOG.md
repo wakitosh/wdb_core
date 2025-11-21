@@ -2,6 +2,23 @@
 
 All notable changes to this module will be documented in this file.
 
+## [1.5.8] - 2025-11-22
+### Added
+- Configuration form for `wdb_cantaloupe_auth` so token TTL and query parameter can be edited at `/admin/config/wdb/cantaloupe-auth`.
+- Token refresh endpoint (`/wdb/api/cantaloupe_auth/token/{page}`) and background refresh logic in the viewer/editor JavaScript to keep long-lived sessions online.
+
+### 追加 (日本語)
+- `/admin/config/wdb/cantaloupe-auth` でトークン TTL とクエリパラメータを編集できる設定フォームを追加。
+- `/wdb/api/cantaloupe_auth/token/{page}` エンドポイントとビューア／エディタ側の自動更新処理を追加し、長時間開いたままのページでもトークンを維持。
+
+### Changed
+- IIIF token validation now falls back to Drupal session cookies when the token expires, preventing editors from being logged out mid-session even with short TTL values.
+- README bilingual sections updated to document the new token workflow, refresh behavior, and session fallback expectations.
+
+### 変更 (日本語)
+- トークン期限切れ時に Drupal セッション Cookie へフォールバックすることで、短い TTL 設定でもログイン中の編集者が 403 にならないよう改善。
+- README の日英両セクションで、新しいトークンワークフローと自動更新／フォールバックの説明を追記。
+
 ## [1.5.7] - 2025-11-21
 ### Added
 - Integration with Drupal Group module for subsystem access control.
@@ -9,6 +26,9 @@ All notable changes to this module will be documented in this file.
 - Group autocomplete UI in subsystem settings (UUID fallback when Group module absent).
 - Signed IIIF token workflow documentation (English/Japanese) including reverse proxy header requirements, delegate script and harness usage, and troubleshooting.
 - Sample Cantaloupe delegate script and local Ruby harness.
+- Update hook that stops upgrades until the Group module is enabled.
+- Refresh endpoint and auto-refreshing viewer/editor tokens so extremely short TTL values remain usable for logged-in sessions.
+- Configuration form for `wdb_cantaloupe_auth` (token TTL & query parameter) at `/admin/config/wdb/cantaloupe-auth`.
 
 ### 追加 (日本語)
 - Drupal Group モジュールとの連携によるサブシステムアクセス制御。
@@ -16,14 +36,19 @@ All notable changes to this module will be documented in this file.
 - サブシステム設定フォームに Drupal Group オートコンプリートを追加（Group未導入時はUUID直接入力フォールバック）。
 - IIIF サイン付きトークンワークフローの日英ドキュメント（リバースプロキシ必須ヘッダー、delegate スクリプト＆ハーネス利用方法、トラブルシュート）。
 - Cantaloupe delegate サンプルスクリプトとローカル Ruby ハーネス。
+- Group モジュールが有効になるまでアップデートを停止する update hook を追加。
+- ビューア／エディタ用のトークン再発行エンドポイントと自動リフレッシュ処理を追加し、極端に短い TTL でもログイン中のセッションが維持されるよう改善。
+- `/admin/config/wdb/cantaloupe-auth` から `wdb_cantaloupe_auth` のトークンTTLとクエリパラメータを変更できる設定フォーム。
 
 ### Changed
 - `WdbDataService` constructor argument order (optional `$token_manager` moved to the end) to remove PHP 8.4 deprecation warning.
 - Updated README bilingual sections for token flow and group restriction instructions.
+- IIIF authorization now falls back to Drupal session cookies when a token is missing/expired, keeping logged-in editors online even with aggressive TTLs.
 
 ### 変更 (日本語)
 - `WdbDataService` コンストラクタ引数順を修正（任意 `$token_manager` を末尾へ移動し PHP 8.4 の警告解消）。
 - README のトークンフロー／グループ制限説明を日英両方で更新。
+- トークン期限切れでも Drupal セッション Cookie にフォールバックすることで、ログイン中の編集者が短い TTL でも閲覧を継続できるように変更。
 
 ### Fixed
 - Documentation references to non-existent delegate path replaced with actual script location.

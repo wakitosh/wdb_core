@@ -128,7 +128,7 @@ The optional `wdb_cantaloupe_auth` submodule now ships with a signed token workf
 4. The Cantaloupe delegate script (see below) extracts the token/cookies, calls Drupal’s `/wdb/api/cantaloupe_auth` endpoint, and passes along the identifier.
 5. Drupal validates the signature, expiration, and optional Drupal Group membership before returning `{"authorized": true/false}`. If no token is present it falls back to the historical cookie/session lookup so logged-in editors can still access tiles even before the token helper loads.
 
-The default TTL is 600 seconds. After a user logs out, previously issued IIIF URLs continue to work until their token expires; shorten `token_ttl` if you need a stricter window.
+The default TTL is 600 seconds. After a user logs out, previously issued IIIF URLs continue to work until their token expires; shorten `token_ttl` if you need a stricter window. Logged-in editors remain authorized even if a token expires mid-session because the delegate falls back to their Drupal session cookies, so aggressive TTL values only impact anonymous/public traffic. The viewer also refreshes its token in the background while a page stays open, which lets you safely experiment with single-digit TTLs for anonymous users without booting active editors.
 
 #### Drupal-side configuration
 
@@ -136,7 +136,7 @@ The default TTL is 600 seconds. After a user logs out, previously issued IIIF 
 - Configure each subsystem at `/admin/config/wdb/settings`:
   - Uncheck **Allow anonymous access** to require either a token or Drupal permissions.
   - Optionally select a Drupal Group in **Restrict via Drupal Group** (stored as UUID) to limit access to group members. If the Group module is not installed, you can paste a UUID instead.
-- Token service settings live in `wdb_cantaloupe_auth.settings`:
+- Token service settings live in `wdb_cantaloupe_auth.settings`. Adjust them via **WDB > Dashboard > Configuration > Cantaloupe authentication** (`/admin/config/wdb/cantaloupe-auth`) or Drush:
 
 ```bash
 drush cget wdb_cantaloupe_auth.settings
@@ -397,7 +397,7 @@ WDB は、デジタル化された画像アーカイブを、学術研究と公�
 4. Cantaloupe の delegate スクリプトがトークン／Cookie を取り出し、Drupal の `/wdb/api/cantaloupe_auth` エンドポイントに POST します。
 5. Drupal は署名・有効期限・必要であれば Drupal Group メンバーシップを検証し、`{"authorized": true/false}` を返します。トークンが無い場合は従来の Cookie のみで照合します。
 
-標準のトークン TTL は 600 秒です。ログアウト後もしばらくタイルが表示されるのは、発行済みトークンが期限切れになるまで有効だからです。より厳格にしたい場合は `token_ttl` を短くしてください。
+標準のトークン TTL は 600 秒です。ログアウト後もしばらくタイルが表示されるのは、発行済みトークンが期限切れになるまで有効だからです。より厳格にしたい場合は `token_ttl` を短くしてください。なお、ログイン中の編集者はトークンの有効期限が切れても Drupal セッション Cookie へのフォールバックで継続して認可されるため、TTL を極端に短くしても影響を受けるのは匿名／公開アクセスのみです。また、ビューアはページを表示したままでも自動的に新しいトークンを取得するため、編集者の作業を中断させずに短い TTL を試すことができます。
 
 #### Drupal 側の設定
 
@@ -405,7 +405,7 @@ WDB は、デジタル化された画像アーカイブを、学術研究と公�
 - `/admin/config/wdb/settings` で各サブシステムを設定します。
   - **Allow anonymous access** のチェックを外すと、トークンまたは Drupal 権限が必須になります。
   - **Restrict via Drupal Group** に Drupal Group を選択すると（内部的にはUUIDを保存）、そのグループ所属者だけがアクセスできます。Groupモジュールが未導入の場合は、UUIDを直接入力してください。
-- トークンサービスの詳細設定は `wdb_cantaloupe_auth.settings` に保存されます。
+- トークンサービスの詳細設定は `wdb_cantaloupe_auth.settings` に保存されます。**WDB > ダッシュボード > 設定 > Cantaloupe authentication** (`/admin/config/wdb/cantaloupe-auth`) から変更するか、以下の Drush コマンドを利用してください:
 
 ```bash
 drush cget wdb_cantaloupe_auth.settings

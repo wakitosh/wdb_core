@@ -137,10 +137,31 @@ class WdbDataService {
     if (!$token) {
       return [];
     }
-    return [
+    $context = [
       'token' => $token,
       'param' => $this->tokenManager->getQueryParameterName(),
     ];
+    $ttl = $this->getIiifTokenTtl();
+    if ($ttl !== NULL) {
+      $context['ttl'] = $ttl;
+    }
+    return $context;
+  }
+
+  /**
+   * Returns the configured IIIF token TTL in seconds, when available.
+   */
+  public function getIiifTokenTtl(): ?int {
+    if (!$this->tokenManager) {
+      return NULL;
+    }
+    try {
+      return $this->tokenManager->getTtl();
+    }
+    catch (\Throwable $e) {
+      $this->logger->warning('Unable to read IIIF token TTL: @message', ['@message' => $e->getMessage()]);
+      return NULL;
+    }
   }
 
   /**
