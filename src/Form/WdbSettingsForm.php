@@ -147,7 +147,7 @@ class WdbSettingsForm extends ConfigFormBase {
         '#type' => 'textfield',
         '#title' => $this->t('IIIF Identifier Pattern'),
         '#default_value' => $config->get('iiif_identifier_pattern'),
-        '#description' => $this->t('Define a pattern to automatically generate image identifiers. Use placeholders: <code>{source_identifier}</code>, <code>{page_number}</code>, <code>{page_name}</code>, <code>{subsystem_name}</code>.'),
+        '#description' => $this->t('Define a pattern to automatically generate image identifiers. Use placeholders such as <code>{source_identifier}</code>, <code>{page_number}</code>, <code>{page_name}</code>, <code>{subsystem_name}</code>. Optional filters are available, e.g. <code>{source_identifier|substr:0:8}</code> or <code>{source_identifier|substr:-4}</code> (same arguments as PHP substr: start, optional length).'),
         '#placeholder' => '{source_identifier}/{page_number}.tif',
       ];
 

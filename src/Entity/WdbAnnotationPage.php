@@ -229,15 +229,49 @@ class WdbAnnotationPage extends ContentEntityBase implements ContentEntityInterf
       return $force_regeneration ? NULL : ($this->get('image_identifier')->value ?? NULL);
     }
 
-    // Replace placeholders with actual values.
-    $replacements = [
-      '{source_identifier}' => $source->get('source_identifier')->value,
-      '{page_number}' => $this->get('page_number')->value,
-      '{page_name}' => $this->get('page_name')->value,
-      '{subsystem_name}' => $subsystem->getName(),
+    // Replace placeholders with actual values and optional filters.
+    $tokens = [
+      'source_identifier' => (string) ($source->get('source_identifier')->value ?? ''),
+      'page_number' => (string) ($this->get('page_number')->value ?? ''),
+      'page_name' => (string) ($this->get('page_name')->value ?? ''),
+      'subsystem_name' => (string) $subsystem->getName(),
     ];
 
-    return str_replace(array_keys($replacements), array_values($replacements), $pattern);
+    $callback = static function (array $matches) use ($tokens) {
+      $token = strtolower($matches[1]);
+      if (!array_key_exists($token, $tokens)) {
+        // Unknown placeholder: leave it untouched so admins notice the typo.
+        return $matches[0];
+      }
+
+      $value = (string) ($tokens[$token] ?? '');
+      $filter = isset($matches[2]) ? strtolower($matches[2]) : '';
+      if ($filter === '' || $filter === NULL) {
+        return $value;
+      }
+
+      $arg_string = $matches[3] ?? '';
+      $args = $arg_string === '' ? [] : array_map('trim', explode(':', $arg_string));
+
+      switch ($filter) {
+        case 'substr':
+          $start = isset($args[0]) && $args[0] !== '' ? (int) $args[0] : 0;
+          $length = isset($args[1]) && $args[1] !== '' ? (int) $args[1] : NULL;
+          $substring = '';
+          if (function_exists('mb_substr')) {
+            $substring = $length === NULL ? mb_substr($value, $start) : mb_substr($value, $start, $length);
+          }
+          else {
+            $substring = $length === NULL ? substr($value, $start) : substr($value, $start, $length);
+          }
+          return (string) $substring;
+
+        default:
+          return $value;
+      }
+    };
+
+    return (string) preg_replace_callback('/\{([a-z_]+)(?:\|([a-z_]+)(?::([^}]+))?)?\}/i', $callback, $pattern);
   }
 
   /**

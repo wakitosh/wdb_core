@@ -72,6 +72,7 @@ After installation, all WDB-related management pages are consolidated under the 
    - **Create the Term:** Go to `Structure > Taxonomy > Subsystem` and create a new taxonomy term for your collection. Select the language for this subsystem.
 2. **Configure the Subsystem:** Go to `WDB > Dashboard > Configuration > Module Settings`. In the tab for your new subsystem, configure the IIIF server details and access control settings.
    - **Important:** It is recommended to set the **IIIF Identifier Pattern** at this stage, before creating any `WDB Source` entities. This ensures that `image_identifier` values are generated correctly from the start. If you want to modify the `image_identifier` after creating the `WDB Source` entity (i.e., after the annotation page entity has been automatically created), enter the **IIIF Identifier Pattern** and click the **Apply pattern to existing pages in "{subsystem_name}"** button in the **Update Existing Pages** section.
+  - **Identifier template syntax:** Available placeholders are `{source_identifier}`, `{page_number}`, `{page_name}`, and `{subsystem_name}`. You can append filters such as `{source_identifier|substr:0:8}` or `{source_identifier|substr:-4}` to extract slices (arguments follow PHP's `substr`: start plus an optional length, negative values allowed).
    - **IIIF Server Prefix:** Do not URL-encode this value.
    - **Allow anonymous access:** Check this to make the gallery and search pages for this subsystem public. Otherwise, users will need the "View non-public WDB gallery pages" or "Access WDB search form" permissions, respectively.
    - **Restrict via Drupal Group:** Optionally select a Drupal Group to limit access to its members. If the Group module is not installed, you can manually enter a Group UUID.
@@ -341,6 +342,7 @@ WDB は、デジタル化された画像アーカイブを、学術研究と公�
    - **タームの作成:** `サイト構築 > タクソノミー > Subsystem` に移動し、資料群に対応する新しいタクソノミータームを作成します。この時、その資料群の主要言語として、先ほど準備した言語を選択します。
 2. **サブシステムの設定:** `WDB > ダッシュボード > 設定 > モジュール設定` に移動します。新しく作成したサブシステムのタブを開き、IIIF画像サーバの情報や資料の公開方法などを設定します。
    - **重要:** `image_identifier`を正しく自動生成するために、この段階で **IIIF Identifier Pattern** を設定することを推奨します。この設定は、`WDB Source` **エンティティを作成する前**に行ってください。`WDB Source`エンティティ作成後（すなわちアノテーションページエンティティが自動作成された後）に`image_identifier`を修正したい場合には、**IIIF Identifier Pattern**を入力した上で、**Update Existing Pages**セクションの **Apply pattern to existing pages in {subsystem_name}** ボタンをクリックしてください。
+  - **識別子テンプレート構文:** 利用できるプレースホルダーは `{source_identifier}`、`{page_number}`、`{page_name}`、`{subsystem_name}` です。さらに `{source_identifier|substr:0:8}` や `{source_identifier|substr:-4}` のように `|substr` フィルタを付与して部分文字列を抽出できます（引数は PHP の `substr` と同じで、開始位置＋任意の長さ。負の値も使用可能）。
    - **IIIF Server Prefix:** URLエンコードは不要です。
    - **Allow anonymous access:** これにチェックを入れると、このサブシステムのギャラリーページと検索フォームが匿名ユーザーに公開されます。チェックを外した場合、それぞれ「View non-public WDB gallery pages」または「Access WDB search form」の権限が必要になります。初期状態では非公開です。
    - **Restrict via Drupal Group:** 特定の Drupal Group のメンバーのみにアクセスを制限したい場合に選択します。Group モジュールがインストールされていない場合は、Group UUID を直接入力することも可能です。

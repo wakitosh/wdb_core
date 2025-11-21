@@ -2,14 +2,16 @@
 
 All notable changes to this module will be documented in this file.
 
-## [1.5.8] - 2025-11-22
+## [1.5.9] - 2025-11-22
 ### Added
 - Configuration form for `wdb_cantaloupe_auth` so token TTL and query parameter can be edited at `/admin/config/wdb/cantaloupe-auth`.
 - Token refresh endpoint (`/wdb/api/cantaloupe_auth/token/{page}`) and background refresh logic in the viewer/editor JavaScript to keep long-lived sessions online.
+- IIIF identifier patterns now support optional substring filters (e.g., `{source_identifier|substr:0:8}` or `{source_identifier|substr:-4}`) so disparate naming schemes can be generated automatically.
 
 ### 追加 (日本語)
 - `/admin/config/wdb/cantaloupe-auth` でトークン TTL とクエリパラメータを編集できる設定フォームを追加。
 - `/wdb/api/cantaloupe_auth/token/{page}` エンドポイントとビューア／エディタ側の自動更新処理を追加し、長時間開いたままのページでもトークンを維持。
+- IIIF Identifier Pattern で `{source_identifier|substr:0:8}` や `{source_identifier|substr:-4}` といった `substr` フィルタを利用できるようになり、識別子の部分文字列を自動生成可能に。
 
 ### Changed
 - IIIF token validation now falls back to Drupal session cookies when the token expires, preventing editors from being logged out mid-session even with short TTL values.
