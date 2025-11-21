@@ -7,7 +7,10 @@ use Drupal\Core\Controller\ControllerBase;
 use Drupal\Core\Database\Connection;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
 // Use the native \SessionHandlerInterface for read() access (no use import).
+use Drupal\wdb_core\Access\SubsystemAccessPolicyInterface;
 use Drupal\wdb_core\Service\WdbDataService;
+use Drupal\wdb_cantaloupe_auth\Service\TokenManagerInterface;
+use Psr\Log\LoggerInterface;
 use Drupal\user\UserInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -40,6 +43,13 @@ class AuthController extends ControllerBase implements ContainerInjectionInterfa
   protected WdbDataService $wdbDataService;
 
   /**
+   * The subsystem access policy service.
+   *
+   * @var \Drupal\wdb_core\Access\SubsystemAccessPolicyInterface
+   */
+  protected SubsystemAccessPolicyInterface $subsystemAccessPolicy;
+
+  /**
    * The database connection.
    *
    * @var \Drupal\Core\Database\Connection
@@ -47,13 +57,20 @@ class AuthController extends ControllerBase implements ContainerInjectionInterfa
   protected Connection $database;
 
   /**
+   * The token manager service.
+   */
+  protected ?TokenManagerInterface $tokenManager;
+
+  /**
    * Constructs a new AuthController object.
    */
-  public function __construct(\SessionHandlerInterface $session_handler, ConfigFactoryInterface $config_factory, WdbDataService $wdbDataService, Connection $database) {
+  public function __construct(\SessionHandlerInterface $session_handler, ConfigFactoryInterface $config_factory, WdbDataService $wdbDataService, SubsystemAccessPolicyInterface $subsystemAccessPolicy, Connection $database, ?TokenManagerInterface $tokenManager = NULL) {
     $this->sessionHandler = $session_handler;
     $this->configFactory = $config_factory;
     $this->wdbDataService = $wdbDataService;
+    $this->subsystemAccessPolicy = $subsystemAccessPolicy;
     $this->database = $database;
+    $this->tokenManager = $tokenManager;
   }
 
   /**
@@ -64,7 +81,9 @@ class AuthController extends ControllerBase implements ContainerInjectionInterfa
       $container->get('session_handler.write_safe'),
       $container->get('config.factory'),
       $container->get('wdb_core.data_service'),
-      $container->get('database')
+      $container->get('wdb_core.subsystem_access_policy'),
+      $container->get('database'),
+      $container->get('wdb_cantaloupe_auth.token_manager')
     );
   }
 
@@ -88,8 +107,13 @@ class AuthController extends ControllerBase implements ContainerInjectionInterfa
       return new JsonResponse(['authorized' => FALSE, 'reason' => 'Subsystem configuration not found.'], 404);
     }
 
-    if ($subsystem_config->get('allowAnonymous')) {
+    if ($this->subsystemAccessPolicy->allowsAnonymous($subsysname)) {
       return new JsonResponse(['authorized' => TRUE, 'reason' => 'Subsystem allows anonymous access.']);
+    }
+
+    $token_response = $this->authorizeViaToken($payload, $identifier, $subsysname, $logger);
+    if ($token_response instanceof JsonResponse) {
+      return $token_response;
     }
 
     // Build cookie map from payload cookies.
@@ -140,13 +164,68 @@ class AuthController extends ControllerBase implements ContainerInjectionInterfa
     }
 
     $user = $this->entityTypeManager()->getStorage('user')->load($uid);
-    if ($user instanceof UserInterface && $user->hasPermission('view wdb gallery pages')) {
+    if ($user instanceof UserInterface && $this->subsystemAccessPolicy->userHasAccess($subsysname, $user, ['permission' => 'view wdb gallery pages'])) {
       return new JsonResponse(['authorized' => TRUE, 'reason' => 'User has permission.']);
     }
 
     $logger->warning('Authorization denied for @subsys (user @uid lacks permission).', [
       '@uid' => $uid,
       '@subsys' => ($subsysname ?? 'N/A'),
+    ]);
+    return new JsonResponse(['authorized' => FALSE, 'reason' => 'User lacks permission.']);
+  }
+
+  /**
+   * Attempts to authorize a request via signed token payload.
+   */
+  protected function authorizeViaToken(array $payload, string $identifier, string $subsysname, LoggerInterface $logger): ?JsonResponse {
+    if (!$this->tokenManager) {
+      return NULL;
+    }
+
+    $token = isset($payload['token']) ? trim((string) $payload['token']) : '';
+    if ($token === '') {
+      return NULL;
+    }
+
+    $token_payload = $this->tokenManager->validateToken($token);
+    if (!$token_payload) {
+      $logger->warning('Invalid or expired IIIF token presented for identifier @id.', ['@id' => $identifier]);
+      return new JsonResponse(['authorized' => FALSE, 'reason' => 'Invalid or expired token.']);
+    }
+
+    $token_subsystem = strtolower((string) ($token_payload['s'] ?? ''));
+    if ($token_subsystem !== strtolower($subsysname)) {
+      $logger->warning('Token subsystem mismatch for identifier @id (expected @expected, received @actual).', [
+        '@id' => $identifier,
+        '@expected' => $subsysname,
+        '@actual' => $token_payload['s'] ?? 'n/a',
+      ]);
+      return new JsonResponse(['authorized' => FALSE, 'reason' => 'Token subsystem mismatch.']);
+    }
+
+    if (($token_payload['i'] ?? '') !== $identifier) {
+      $logger->warning('Token identifier mismatch (expected @expected, received @actual).', [
+        '@expected' => $identifier,
+        '@actual' => $token_payload['i'] ?? 'n/a',
+      ]);
+      return new JsonResponse(['authorized' => FALSE, 'reason' => 'Token identifier mismatch.']);
+    }
+
+    $uid = (int) ($token_payload['u'] ?? 0);
+    if ($uid <= 0) {
+      $logger->warning('Token missing user context for identifier @id.', ['@id' => $identifier]);
+      return new JsonResponse(['authorized' => FALSE, 'reason' => 'Token missing user context.']);
+    }
+
+    $user = $this->entityTypeManager()->getStorage('user')->load($uid);
+    if ($user instanceof UserInterface && $this->subsystemAccessPolicy->userHasAccess($subsysname, $user, ['permission' => 'view wdb gallery pages'])) {
+      return new JsonResponse(['authorized' => TRUE, 'reason' => 'Token validated.']);
+    }
+
+    $logger->warning('Authorization denied for @subsys via token (user @uid lacks permission).', [
+      '@uid' => $uid,
+      '@subsys' => $subsysname,
     ]);
     return new JsonResponse(['authorized' => FALSE, 'reason' => 'User lacks permission.']);
   }

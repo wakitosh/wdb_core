@@ -13,6 +13,9 @@ wdb_core.subsystem.*:
     allowAnonymous:
       type: boolean
       label: 'Allow Anonymous Access to Gallery Pages'
+    group_uuid:
+      type: string
+      label: 'Linked Group UUID'
     pageNavigation:
       type: string # 'right-to-left' or 'left-to-right'
       label: 'Page Navigation Viewing Direction'

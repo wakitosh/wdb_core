@@ -6,6 +6,110 @@
 (function ($, Drupal, OpenSeadragon, AnnotoriousOSD, drupalSettings, once) {
   'use strict';
 
+  function createIiifTokenHelper(authConfig) {
+    const config = authConfig || {};
+    const token = (typeof config.token === 'string' && config.token.length) ? config.token : null;
+    const paramName = (typeof config.param === 'string' && config.param.length)
+      ? config.param
+      : ((typeof config.parameter === 'string' && config.parameter.length) ? config.parameter : 'wdb_token');
+
+    if (!token) {
+      return {
+        hasToken: false,
+        appendToken: (url) => url,
+        normalizeTileSources: (value) => value,
+        attachViewer: () => { },
+      };
+    }
+
+    const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const paramRegex = new RegExp(`([?&])${escapeRegex(paramName)}=([^&#]*)`);
+    const encodedToken = encodeURIComponent(token);
+
+    const appendToken = (url) => {
+      if (!url || typeof url !== 'string') {
+        return url;
+      }
+      const [basePart, fragment] = url.split('#', 2);
+      let updated = basePart;
+      if (paramRegex.test(basePart)) {
+        updated = basePart.replace(paramRegex, `$1${paramName}=${encodedToken}`);
+      }
+      else {
+        const separator = basePart.includes('?') ? '&' : '?';
+        updated = `${basePart}${separator}${paramName}=${encodedToken}`;
+      }
+      return fragment ? `${updated}#${fragment}` : updated;
+    };
+
+    const normalizeTileSources = (value) => {
+      if (!value) {
+        return value;
+      }
+      if (Array.isArray(value)) {
+        return value.map((entry) => (typeof entry === 'string') ? appendToken(entry) : entry);
+      }
+      if (typeof value === 'string') {
+        return appendToken(value);
+      }
+      if (typeof value === 'object') {
+        if (typeof value.url === 'string') {
+          value.url = appendToken(value.url);
+        }
+        if (typeof value.tileSource === 'string') {
+          value.tileSource = appendToken(value.tileSource);
+        }
+      }
+      return value;
+    };
+
+    const patchViewerSources = (viewerInstance) => {
+      if (!viewerInstance || typeof viewerInstance.addHandler !== 'function') {
+        return;
+      }
+      const patchSources = () => {
+        try {
+          const world = viewerInstance.world;
+          const count = world && typeof world.getItemCount === 'function' ? world.getItemCount() : 0;
+          for (let idx = 0; idx < count; idx++) {
+            const item = world.getItemAt(idx);
+            const source = item && item.source;
+            if (!source) {
+              continue;
+            }
+            if (typeof source.url === 'string') {
+              source.url = appendToken(source.url);
+            }
+            if (typeof source.tilesUrl === 'string') {
+              source.tilesUrl = appendToken(source.tilesUrl);
+            }
+            if (typeof source.getTileUrl === 'function' && !source.__wdbTokenWrapped) {
+              const original = source.getTileUrl.bind(source);
+              source.getTileUrl = function patchedGetTileUrl(level, x, y, time) {
+                const rawUrl = original(level, x, y, time);
+                return appendToken(rawUrl);
+              };
+              source.__wdbTokenWrapped = true;
+            }
+          }
+        }
+        catch (e) {
+          // Ignore patching failures.
+        }
+      };
+
+      patchSources();
+      viewerInstance.addHandler('open', () => { patchSources(); });
+    };
+
+    return {
+      hasToken: true,
+      appendToken,
+      normalizeTileSources,
+      attachViewer: patchViewerSources,
+    };
+  }
+
   // Shared tooltip reference for the editor page.
   let tooltip = null;
   // Track whether the pointer is currently inside the viewer area to avoid sticky UI.
@@ -34,6 +138,8 @@
           initTooltip();
 
           const osdSettings = settings.wdb_core.openseadragon;
+          const iiifTokenHelper = createIiifTokenHelper(osdSettings.auth);
+          osdSettings.tileSources = iiifTokenHelper.normalizeTileSources(osdSettings.tileSources);
           const viewer = OpenSeadragon({
             drawer: 'canvas',
             element: viewerElement,
@@ -60,6 +166,8 @@
               clickToZoom: false,
             },
           });
+
+          iiifTokenHelper.attachViewer(viewer);
 
           const anno = AnnotoriousOSD.createOSDAnnotator(viewer, {
             drawingEnabled: false,

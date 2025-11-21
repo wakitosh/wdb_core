@@ -355,6 +355,7 @@ class SearchApiController extends ControllerBase implements ContainerInjectionIn
         "{$word_bbox['x']},{$word_bbox['y']},{$word_bbox['w']},{$word_bbox['h']}",
         $size_param
       );
+      $thumbnail_url = $this->wdbDataService->appendIiifTokenToUrl($thumbnail_url, $subsysname, $image_identifier);
 
       return [
         'image_url' => $thumbnail_url,

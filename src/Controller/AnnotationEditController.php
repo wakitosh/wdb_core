@@ -143,6 +143,8 @@ class AnnotationEditController extends ControllerBase implements ContainerInject
     }
 
     $info_json_url = $iiif_base_url . '/' . rawurlencode($image_identifier) . '/info.json';
+    $info_json_url = $this->wdbDataService->appendIiifTokenToUrl($info_json_url, $subsysname, $image_identifier);
+    $iiif_auth_context = $this->wdbDataService->getIiifAuthContext($subsysname, $image_identifier);
     $page_navigation = $subsys_config->get('pageNavigation') ?? 'left-to-right';
 
     $manifest_base_uri = $this->getManifestUri($wdb_source_entity, $subsysname);
@@ -169,6 +171,9 @@ class AnnotationEditController extends ControllerBase implements ContainerInject
           continue;
         }
 
+        $thumb_url = $iiif_base_url . '/' . rawurlencode($image_identifier_for_thumb) . '/full/!150,150/0/default.jpg';
+        $thumb_url = $this->wdbDataService->appendIiifTokenToUrl($thumb_url, $subsysname, $image_identifier_for_thumb);
+
         $page_list[] = [
           'page' => $page_num,
           'label' => $page_entity->label(),
@@ -177,7 +182,7 @@ class AnnotationEditController extends ControllerBase implements ContainerInject
             'source' => $source,
             'page' => $page_num,
           ])->toString(),
-          'thumbnailUrl' => $iiif_base_url . '/' . rawurlencode($image_identifier_for_thumb) . '/full/!150,150/0/default.jpg',
+          'thumbnailUrl' => $thumb_url,
         ];
       }
     }
@@ -234,6 +239,9 @@ class AnnotationEditController extends ControllerBase implements ContainerInject
       'defaultZoomLevel' => 1,
       'toolbarUrls' => $toolbar_urls,
     ];
+    if (!empty($iiif_auth_context)) {
+      $osd_settings['auth'] = $iiif_auth_context;
+    }
 
     $build = [];
     $build['#title'] = $this->getPageTitle($subsysname, $source, $page);

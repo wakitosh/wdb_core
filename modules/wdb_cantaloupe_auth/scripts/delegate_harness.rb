@@ -6,13 +6,14 @@
 #     --identifier wdb/hdb/bm10221/1.ptif \
 #     --cookies "SSESSxxxx=abc; _ga=1" \
 #     --client-ip 203.0.113.9 \
-#     --request-uri "/iiif/3/wdb%2Fhdb%2Fbm10221%2F1.ptif/full/max/0/default.jpg"
+#     --request-uri "/iiif/3/wdb%2Fhdb%2Fbm10221%2F1.ptif/full/max/0/default.jpg?wdb_token=YOUR.TOKEN.VALUE"
 #
 # Returns exit status 0 if authorized, 1 otherwise.
 
 require 'net/http'
 require 'uri'
 require 'json'
+require_relative 'delegate'
 require 'optparse'
 
 DRUPAL_AUTH_ENDPOINT = ENV['DRUPAL_AUTH_ENDPOINT'] || nil
@@ -41,6 +42,10 @@ $context = {
   'identifier' => opts['identifier'],
   'client_ip' => opts['client_ip'],
   'request_uri' => opts['request_uri'],
+  'local_uri' => opts['request_uri'],
+  'request_headers' => {
+    'X-Original-URI' => opts['request_uri'],
+  },
   'cookies' => {}
 }
 
@@ -56,50 +61,7 @@ def context
   $context
 end
 
-# --- Begin: delegate.rb sample logic ---
-# The full URL to your Drupal site's authorization API endpoint.
-# Example: https://your.host.name/wdb/api/cantaloupe_auth
-DRUPAL_ENDPOINT = DRUPAL_AUTH_ENDPOINT
-
-def pre_authorize(options = {})
-  # Allow requests for info.json unconditionally.
-  return true if context['request_uri'].to_s.end_with?('info.json')
-
-  # Allow requests from the server itself (e.g., for derivative generation).
-  return true if context['client_ip'].to_s.start_with?('127.0.0.1')
-
-  # Convert cookies to the format expected by the API.
-  cookies = context['cookies'].map { |k, v| "#{k}=#{v}" }
-
-  # Create the payload for the API request.
-  payload = {
-    cookies: cookies,
-    identifier: context['identifier']
-  }.to_json
-
-  begin
-    uri = URI.parse(DRUPAL_ENDPOINT)
-    http = Net::HTTP.new(uri.host, uri.port)
-    http.use_ssl = (uri.scheme == 'https')
-
-    request = Net::HTTP::Post.new(uri.request_uri, 'Content-Type' => 'application/json')
-    request.body = payload
-
-    response = http.request(request)
-
-    if response.is_a?(Net::HTTPSuccess)
-      auth_result = JSON.parse(response.body)
-      return !!auth_result['authorized']
-    else
-      # If the API call fails, deny access for security.
-      return false
-    end
-  rescue => _e
-    # If any exception occurs, deny access for security.
-    return false
-  end
-end
-# --- End: delegate.rb sample logic ---
+ # Token extraction and pre_authorize are provided by delegate.rb
 
 ok = pre_authorize
 puts({ authorized: ok }.to_json)

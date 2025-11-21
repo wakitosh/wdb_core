@@ -217,11 +217,12 @@ class IiifV3ManifestController extends ControllerBase implements ContainerInject
       }
 
       $info_json_url = $iiif_base_url . '/' . rawurlencode($image_identifier) . '/info.json';
+      $signed_info_json_url = $this->wdbDataService->appendIiifTokenToUrl($info_json_url, $subsysname, $image_identifier);
 
       // Fetch image dimensions from the IIIF server's info.json file.
       try {
         $client = $this->httpClientFactory->fromOptions(['timeout' => 10]);
-        $response = $client->get($info_json_url);
+        $response = $client->get($signed_info_json_url);
         $info_data = json_decode($response->getBody(), TRUE);
         $width = $info_data['width'] ?? 2000;
         $height = $info_data['height'] ?? 2000;
@@ -230,7 +231,7 @@ class IiifV3ManifestController extends ControllerBase implements ContainerInject
         $this->getLogger('wdb_core')->error(
           'Failed to fetch info.json for @url: @message',
           [
-            '@url' => $info_json_url,
+            '@url' => $signed_info_json_url,
             '@message' => $e->getMessage(),
           ]
         );
@@ -250,12 +251,15 @@ class IiifV3ManifestController extends ControllerBase implements ContainerInject
 
       // Define the base URI for the image service (without /info.json).
       $image_service_uri = $iiif_base_url . '/' . rawurlencode($image_identifier);
+      $signed_image_service_uri = $this->wdbDataService->appendIiifTokenToUrl($image_service_uri, $subsysname, $image_identifier);
 
       // Define the URI for the actual image content to be displayed.
       $image_content_uri = $image_service_uri . '/full/max/0/default.' . $image_ext;
+      $image_content_uri = $this->wdbDataService->appendIiifTokenToUrl($image_content_uri, $subsysname, $image_identifier);
 
       // Generate the thumbnail image URL (150px width, auto height).
       $thumbnail_image_uri = $image_service_uri . '/full/150,/0/default.' . $image_ext;
+      $thumbnail_image_uri = $this->wdbDataService->appendIiifTokenToUrl($thumbnail_image_uri, $subsysname, $image_identifier);
 
       $canvas = [
         'id' => $canvas_uri,
@@ -271,7 +275,7 @@ class IiifV3ManifestController extends ControllerBase implements ContainerInject
             'format' => 'image/jpeg',
             'service' => [
               [
-                'id' => $image_service_uri,
+                'id' => $signed_image_service_uri,
                 'type' => 'ImageService3',
                 'profile' => 'level2',
               ],
@@ -295,7 +299,7 @@ class IiifV3ManifestController extends ControllerBase implements ContainerInject
                   'height' => $height,
                   'service' => [
                     [
-                      'id' => $image_service_uri,
+                      'id' => $signed_image_service_uri,
                       'type' => 'ImageService3',
                       'profile' => 'level2',
                     ],

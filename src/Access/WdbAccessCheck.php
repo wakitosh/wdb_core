@@ -7,7 +7,6 @@ use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
 use Drupal\Core\Routing\Access\AccessInterface;
 use Drupal\Core\Session\AccountInterface;
-use Drupal\wdb_core\Service\WdbDataService;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\Routing\Route;
 
@@ -27,23 +26,23 @@ class WdbAccessCheck implements AccessInterface, ContainerInjectionInterface {
   protected ConfigFactoryInterface $configFactory;
 
   /**
-   * The WDB data service.
+   * The subsystem access policy.
    *
-   * @var \Drupal\wdb_core\Service\WdbDataService
+   * @var \Drupal\wdb_core\Access\SubsystemAccessPolicyInterface
    */
-  protected WdbDataService $wdbDataService;
+  protected SubsystemAccessPolicyInterface $subsystemAccessPolicy;
 
   /**
    * Constructs a new WdbAccessCheck object.
    *
    * @param \Drupal\Core\Config\ConfigFactoryInterface $config_factory
    *   The config factory.
-   * @param \Drupal\wdb_core\Service\WdbDataService $wdbDataService
-   *   The WDB data service.
+   * @param \Drupal\wdb_core\Access\SubsystemAccessPolicyInterface $subsystemAccessPolicy
+   *   The subsystem access policy.
    */
-  public function __construct(ConfigFactoryInterface $config_factory, WdbDataService $wdbDataService) {
+  public function __construct(ConfigFactoryInterface $config_factory, SubsystemAccessPolicyInterface $subsystemAccessPolicy) {
     $this->configFactory = $config_factory;
-    $this->wdbDataService = $wdbDataService;
+    $this->subsystemAccessPolicy = $subsystemAccessPolicy;
   }
 
   /**
@@ -52,7 +51,7 @@ class WdbAccessCheck implements AccessInterface, ContainerInjectionInterface {
   public static function create(ContainerInterface $container) {
     return new static(
       $container->get('config.factory'),
-      $container->get('wdb_core.data_service')
+      $container->get('wdb_core.subsystem_access_policy')
     );
   }
 
@@ -71,33 +70,14 @@ class WdbAccessCheck implements AccessInterface, ContainerInjectionInterface {
    */
   public function access(AccountInterface $account, Route $route, string $subsysname = ''): AccessResult {
     if (empty($subsysname)) {
-      // If there's no subsystem context, fall back to a standard permission check.
+      // If there's no subsystem context, fall back to route permission.
       // The permission is read from the route definition.
       $permission = $route->getOption('permission') ?: 'access content';
       return AccessResult::allowedIfHasPermission($account, $permission);
     }
 
-    $subsystem_config = $this->wdbDataService->getSubsystemConfig($subsysname);
-    if (!$subsystem_config) {
-      return AccessResult::forbidden('Subsystem configuration does not exist.');
-    }
-
-    // 1. First, determine the access result.
-    $access_result = NULL;
-    if ($subsystem_config->get('allowAnonymous')) {
-      $access_result = AccessResult::allowed();
-    }
-    else {
-      // FIX: Get the required permission dynamically from the route's options.
-      // Fallback to a sensible default if not specified.
-      $permission = $route->getOption('permission') ?: 'access content';
-      $access_result = AccessResult::allowedIfHasPermission($account, $permission);
-    }
-
-    // 2. Then, add the configuration as a cacheable dependency.
-    // This ensures that Drupal automatically invalidates the access cache for
-    // this route whenever the subsystem's configuration is changed.
-    return $access_result->addCacheableDependency($subsystem_config);
+    $permission = $route->getOption('permission') ?: 'access content';
+    return $this->subsystemAccessPolicy->checkAccess($subsysname, $account, ['permission' => $permission]);
   }
 
 }

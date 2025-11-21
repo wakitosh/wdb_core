@@ -6,6 +6,8 @@ services:
       - '@config.factory'
       - '@logger.factory'
       - '@wdb_core.hull_calculator'
+      - '@current_user'
+      - '@?wdb_cantaloupe_auth.token_manager'
 
   wdb_core.text_generator:
     class: Drupal\wdb_core\Service\WdbTextGeneratorService
@@ -24,9 +26,17 @@ services:
     class: Drupal\wdb_core\Access\WdbAccessCheck
     arguments:
       - '@config.factory'
-      - '@wdb_core.data_service'
+      - '@wdb_core.subsystem_access_policy'
     tags:
       - { name: access_check, applies_to: _wdb_gallery_access }
+
+  wdb_core.subsystem_access_policy:
+    class: Drupal\wdb_core\Access\DefaultSubsystemAccessPolicy
+    arguments:
+      - '@config.factory'
+      - '@wdb_core.data_service'
+      - '@entity_type.manager'
+      - '@?group.membership_loader'
 
   wdb_core.route_subscriber:
     class: Drupal\wdb_core\Routing\WdbRouteSubscriber

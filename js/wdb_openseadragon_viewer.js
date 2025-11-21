@@ -6,6 +6,110 @@
 (function ($, Drupal, OpenSeadragon, AnnotoriousOSD, drupalSettings, once) {
   'use strict';
 
+  function createIiifTokenHelper(authConfig) {
+    const config = authConfig || {};
+    const token = (typeof config.token === 'string' && config.token.length) ? config.token : null;
+    const paramName = (typeof config.param === 'string' && config.param.length)
+      ? config.param
+      : ((typeof config.parameter === 'string' && config.parameter.length) ? config.parameter : 'wdb_token');
+
+    if (!token) {
+      return {
+        hasToken: false,
+        appendToken: (url) => url,
+        normalizeTileSources: (value) => value,
+        attachViewer: () => { },
+      };
+    }
+
+    const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const paramRegex = new RegExp(`([?&])${escapeRegex(paramName)}=([^&#]*)`);
+    const encodedToken = encodeURIComponent(token);
+
+    const appendToken = (url) => {
+      if (!url || typeof url !== 'string') {
+        return url;
+      }
+      const [basePart, fragment] = url.split('#', 2);
+      let updated = basePart;
+      if (paramRegex.test(basePart)) {
+        updated = basePart.replace(paramRegex, `$1${paramName}=${encodedToken}`);
+      }
+      else {
+        const separator = basePart.includes('?') ? '&' : '?';
+        updated = `${basePart}${separator}${paramName}=${encodedToken}`;
+      }
+      return fragment ? `${updated}#${fragment}` : updated;
+    };
+
+    const normalizeTileSources = (value) => {
+      if (!value) {
+        return value;
+      }
+      if (Array.isArray(value)) {
+        return value.map((entry) => (typeof entry === 'string') ? appendToken(entry) : entry);
+      }
+      if (typeof value === 'string') {
+        return appendToken(value);
+      }
+      if (typeof value === 'object') {
+        if (typeof value.url === 'string') {
+          value.url = appendToken(value.url);
+        }
+        if (typeof value.tileSource === 'string') {
+          value.tileSource = appendToken(value.tileSource);
+        }
+      }
+      return value;
+    };
+
+    const patchViewerSources = (viewerInstance) => {
+      if (!viewerInstance || typeof viewerInstance.addHandler !== 'function') {
+        return;
+      }
+      const patchSources = () => {
+        try {
+          const world = viewerInstance.world;
+          const count = world && typeof world.getItemCount === 'function' ? world.getItemCount() : 0;
+          for (let idx = 0; idx < count; idx++) {
+            const item = world.getItemAt(idx);
+            const source = item && item.source;
+            if (!source) {
+              continue;
+            }
+            if (typeof source.url === 'string') {
+              source.url = appendToken(source.url);
+            }
+            if (typeof source.tilesUrl === 'string') {
+              source.tilesUrl = appendToken(source.tilesUrl);
+            }
+            if (typeof source.getTileUrl === 'function' && !source.__wdbTokenWrapped) {
+              const original = source.getTileUrl.bind(source);
+              source.getTileUrl = function patchedGetTileUrl(level, x, y, time) {
+                const rawUrl = original(level, x, y, time);
+                return appendToken(rawUrl);
+              };
+              source.__wdbTokenWrapped = true;
+            }
+          }
+        }
+        catch (e) {
+          // Ignore token patching issues to avoid breaking viewer startup.
+        }
+      };
+
+      patchSources();
+      viewerInstance.addHandler('open', () => { patchSources(); });
+    };
+
+    return {
+      hasToken: true,
+      appendToken,
+      normalizeTileSources,
+      attachViewer: patchViewerSources,
+    };
+  }
+
   // Variables shared within this script's scope.
   let tempWordAnnotationId = null;
   let tooltip = null;
@@ -78,6 +182,8 @@
 
         // Initialize the viewer.
         const osdSettings = drupalSettings.wdb_core.openseadragon;
+        const iiifTokenHelper = createIiifTokenHelper(osdSettings.auth);
+        osdSettings.tileSources = iiifTokenHelper.normalizeTileSources(osdSettings.tileSources);
         // Track when full text HTML is ready so we can sequence: Text -> Annotation -> Selection/Pan
         let _fullTextLoaded = false;
         const _fullTextWaiters = [];
@@ -112,6 +218,8 @@
           gestureSettingsPen: { clickToZoom: false }, // added to prevent pen tap zoom
           gestureSettingsUnknown: { clickToZoom: false },
         });
+
+        iiifTokenHelper.attachViewer(viewer);
 
         // Temporary animation tuners to smooth pan without permanently changing globals.
         const withTempAnimation = (durationSec, fn) => {

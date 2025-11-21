@@ -7,6 +7,7 @@ use Drupal\Core\Config\ImmutableConfig;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Entity\EntityInterface;
 use Drupal\Core\Logger\LoggerChannelFactoryInterface;
+use Drupal\Core\Session\AccountProxyInterface;
 use Drupal\Core\StringTranslation\StringTranslationTrait;
 use Drupal\Core\Url;
 use Drupal\wdb_core\Entity\WdbAnnotationPage;
@@ -16,6 +17,7 @@ use Drupal\wdb_core\Entity\WdbSignInterpretation;
 use Drupal\wdb_core\Entity\WdbWordUnit;
 use Drupal\wdb_core\Entity\WdbWordMap;
 use Drupal\wdb_core\Lib\HullJsPhp\HullPHP;
+use Drupal\wdb_cantaloupe_auth\Service\TokenManagerInterface;
 
 /**
  * Service class for handling WDB data-related operations.
@@ -56,7 +58,27 @@ class WdbDataService {
   protected HullPHP $hullCalculator;
 
   /**
+   * Optional token manager for signed IIIF URLs.
+   */
+  protected ?TokenManagerInterface $tokenManager;
+
+  /**
+   * The account proxy for the current request.
+   */
+  protected AccountProxyInterface $currentUser;
+
+  /**
+   * Per-request cache of issued IIIF tokens keyed by user/subsystem/image.
+   *
+   * @var array<string,string|null>
+   */
+  protected array $iiifTokenCache = [];
+
+  /**
    * Constructs a new WdbDataService object.
+   *
+   * Note: Optional parameters must appear after required ones to avoid
+   * deprecation warnings in recent PHP versions.
    *
    * @param \Drupal\Core\Entity\EntityTypeManagerInterface $entity_type_manager
    *   The entity type manager.
@@ -66,12 +88,18 @@ class WdbDataService {
    *   The logger factory.
    * @param \Drupal\wdb_core\Lib\HullJsPhp\HullPHP $hull_calculator
    *   The HullPHP calculation service.
+   * @param \Drupal\Core\Session\AccountProxyInterface $current_user
+   *   The current user proxy for issuing user-scoped tokens.
+   * @param \Drupal\wdb_cantaloupe_auth\Service\TokenManagerInterface|null $token_manager
+   *   (optional) The token manager when the cantaloupe auth module is enabled.
    */
-  public function __construct(EntityTypeManagerInterface $entity_type_manager, ConfigFactoryInterface $config_factory, LoggerChannelFactoryInterface $logger_factory, HullPHP $hull_calculator) {
+  public function __construct(EntityTypeManagerInterface $entity_type_manager, ConfigFactoryInterface $config_factory, LoggerChannelFactoryInterface $logger_factory, HullPHP $hull_calculator, AccountProxyInterface $current_user, ?TokenManagerInterface $token_manager = NULL) {
     $this->entityTypeManager = $entity_type_manager;
     $this->configFactory = $config_factory;
     $this->logger = $logger_factory->get('wdb_core');
     $this->hullCalculator = $hull_calculator;
+    $this->currentUser = $current_user;
+    $this->tokenManager = $token_manager;
   }
 
   /**
@@ -96,6 +124,83 @@ class WdbDataService {
     $ids = $query->execute();
 
     return !empty($ids) ? $storage->loadMultiple($ids) : [];
+  }
+
+  /**
+   * Returns the token payload for front-end consumers.
+   */
+  public function getIiifAuthContext(string $subsysname, string $image_identifier): array {
+    if (!$this->tokenManager) {
+      return [];
+    }
+    $token = $this->getIiifToken($subsysname, $image_identifier);
+    if (!$token) {
+      return [];
+    }
+    return [
+      'token' => $token,
+      'param' => $this->tokenManager->getQueryParameterName(),
+    ];
+  }
+
+  /**
+   * Appends a signed token to a IIIF URL when available.
+   */
+  public function appendIiifTokenToUrl(string $url, string $subsysname, string $image_identifier): string {
+    if (!$this->tokenManager || trim($url) === '' || trim($subsysname) === '' || trim($image_identifier) === '') {
+      return $url;
+    }
+    $token = $this->getIiifToken($subsysname, $image_identifier);
+    if (!$token) {
+      return $url;
+    }
+    try {
+      return $this->tokenManager->appendTokenToUrl($url, $token);
+    }
+    catch (\Throwable $e) {
+      $this->logger->warning('Failed to append IIIF token for identifier @id: @message', [
+        '@id' => $image_identifier,
+        '@message' => $e->getMessage(),
+      ]);
+      return $url;
+    }
+  }
+
+  /**
+   * Issues (and caches) a token for the provided subsystem/image pair.
+   */
+  protected function getIiifToken(string $subsysname, string $image_identifier): ?string {
+    if (!$this->tokenManager) {
+      return NULL;
+    }
+    $subsysname = trim($subsysname);
+    $image_identifier = trim($image_identifier);
+    if ($subsysname === '' || $image_identifier === '') {
+      return NULL;
+    }
+
+    $cache_key = $this->buildIiifTokenCacheKey($subsysname, $image_identifier);
+    if (!array_key_exists($cache_key, $this->iiifTokenCache)) {
+      try {
+        $this->iiifTokenCache[$cache_key] = $this->tokenManager->issueToken($subsysname, $image_identifier, $this->currentUser);
+      }
+      catch (\Throwable $e) {
+        $this->logger->error('Unable to issue IIIF token for identifier @id: @message', [
+          '@id' => $image_identifier,
+          '@message' => $e->getMessage(),
+        ]);
+        $this->iiifTokenCache[$cache_key] = NULL;
+      }
+    }
+    return $this->iiifTokenCache[$cache_key] ?? NULL;
+  }
+
+  /**
+   * Builds a unique cache key for tokens per user/subsystem/image combo.
+   */
+  protected function buildIiifTokenCacheKey(string $subsysname, string $image_identifier): string {
+    $uid = (int) $this->currentUser->id();
+    return strtolower($subsysname) . '::' . $image_identifier . '::' . $uid;
   }
 
   /**
@@ -342,6 +447,7 @@ class WdbDataService {
       $upscale_prefix = ($target_w > $bbox['w'] || $target_h > $bbox['h']) ? '^' : '';
       $size_param = $upscale_prefix . '!' . $target_w . ',' . $target_h;
       $thumbnail_url = $iiif_base_url . '/' . rawurlencode($image_identifier) . '/' . "{$bbox['x']},{$bbox['y']},{$bbox['w']},{$bbox['h']}" . '/' . $size_param . '/0/default.jpg';
+      $thumbnail_url = $this->appendIiifTokenToUrl($thumbnail_url, $subsysname, $image_identifier);
 
       $si_data_item['thumbnail_data'] = [
         'image_identifier' => $image_identifier,
@@ -560,6 +666,7 @@ class WdbDataService {
         $upscale_prefix = ($target_w > $word_bbox['w'] || $target_h > $word_bbox['h']) ? '^' : '';
         $size_param = $upscale_prefix . '!' . $target_w . ',' . $target_h;
         $thumbnail_url = $iiif_base_url . '/' . rawurlencode($image_identifier) . '/' . "{$word_bbox['x']},{$word_bbox['y']},{$word_bbox['w']},{$word_bbox['h']}" . '/' . $size_param . '/0/default.jpg';
+        $thumbnail_url = $this->appendIiifTokenToUrl($thumbnail_url, $subsysname, $image_identifier);
 
         $wu_data_item['thumbnail_data'] = [
           'image_identifier' => $image_identifier,

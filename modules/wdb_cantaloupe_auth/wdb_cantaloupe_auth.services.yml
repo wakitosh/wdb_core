@@ -1,10 +1,19 @@
 services:
+  wdb_cantaloupe_auth.token_manager:
+    class: Drupal\wdb_cantaloupe_auth\Service\TokenManager
+    arguments:
+      - '@config.factory'
+      - '@datetime.time'
+      - '@private_key'
+
   wdb_cantaloupe_auth.auth_controller:
     class: Drupal\wdb_cantaloupe_auth\Controller\AuthController
     arguments:
       - '@session_handler.write_safe'
       - '@config.factory'
       - '@wdb_core.data_service'
+      - '@wdb_core.subsystem_access_policy'
       - '@database'
+      - '@wdb_cantaloupe_auth.token_manager'
     tags:
       - { name: controller.service_arguments }

@@ -505,3 +505,20 @@ function wdb_core_post_update_normalize_sign_function_langcode_07(&$sandbox = NU
     \Drupal::logger('wdb_core')->warning('Failed normalizing sign_function langcodes: @msg', ['@msg' => $e->getMessage()]);
   }
 }
+
+/**
+ * Ensure subsystem configs define the group_uuid linkage key.
+ */
+function wdb_core_post_update_add_group_uuid_setting_08(&$sandbox = NULL): void {
+  $storage = \Drupal::service('config.storage');
+  $config_factory = \Drupal::configFactory();
+  $config_names = $storage->listAll('wdb_core.subsystem.');
+
+  foreach ($config_names as $name) {
+    $config = $config_factory->getEditable($name);
+    $data = $config->getRawData();
+    if (!array_key_exists('group_uuid', $data)) {
+      $config->set('group_uuid', NULL)->save();
+    }
+  }
+}

@@ -158,6 +158,8 @@ class GalleryController extends ControllerBase implements ContainerInjectionInte
     $image_identifier = $wdb_annotation_page_entity->getImageIdentifier();
 
     $info_json_url = $iiif_base_url . '/' . rawurlencode($image_identifier) . '/info.json';
+    $info_json_url = $this->wdbDataService->appendIiifTokenToUrl($info_json_url, $subsysname, $image_identifier);
+    $iiif_auth_context = $this->wdbDataService->getIiifAuthContext($subsysname, $image_identifier);
     $page_navigation = $subsys_config->get('pageNavigation') ?? 'left-to-right';
 
     $manifest_base_uri = $this->getManifestUri($wdb_source_entity, $subsysname);
@@ -190,6 +192,9 @@ class GalleryController extends ControllerBase implements ContainerInjectionInte
           continue;
         }
 
+        $thumb_url = $iiif_base_url . '/' . rawurlencode($image_identifier_for_thumb) . '/full/!150,150/0/default.jpg';
+        $thumb_url = $this->wdbDataService->appendIiifTokenToUrl($thumb_url, $subsysname, $image_identifier_for_thumb);
+
         $page_list[] = [
           'page' => $page_entity->get('page_number')->value,
           'label' => $page_entity->label(),
@@ -198,7 +203,7 @@ class GalleryController extends ControllerBase implements ContainerInjectionInte
             'source' => $source,
             'page' => $page_entity->get('page_number')->value,
           ])->toString(),
-          'thumbnailUrl' => $iiif_base_url . '/' . rawurlencode($image_identifier_for_thumb) . '/full/!150,150/0/default.jpg',
+          'thumbnailUrl' => $thumb_url,
         ];
       }
     }
@@ -271,6 +276,9 @@ class GalleryController extends ControllerBase implements ContainerInjectionInte
       ],
       'hasAnnotations' => $has_annotations,
     ];
+    if (!empty($iiif_auth_context)) {
+      $osd_settings['auth'] = $iiif_auth_context;
+    }
 
     // 4. Build the render array.
     $build = [];

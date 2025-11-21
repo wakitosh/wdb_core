@@ -1,5 +1,50 @@
 # Changelog
 
+All notable changes to this module will be documented in this file.
+
+## [1.5.7] - 2025-11-21
+### Added
+- Kernel tests for subsystem access policy (anonymous, permission fallback, group restriction scenarios).
+- Group autocomplete UI in subsystem settings (UUID fallback when Group module absent).
+- Signed IIIF token workflow documentation (English/Japanese) including reverse proxy header requirements, delegate script and harness usage, and troubleshooting.
+- Sample Cantaloupe delegate script and local Ruby harness.
+
+### 追加 (日本語)
+- サブシステムアクセスポリシーの Kernel テスト（匿名許可 / 権限フォールバック / グループ制限シナリオ）。
+- サブシステム設定フォームに Drupal Group オートコンプリートを追加（Group未導入時はUUID直接入力フォールバック）。
+- IIIF サイン付きトークンワークフローの日英ドキュメント（リバースプロキシ必須ヘッダー、delegate スクリプト＆ハーネス利用方法、トラブルシュート）。
+- Cantaloupe delegate サンプルスクリプトとローカル Ruby ハーネス。
+
+### Changed
+- `WdbDataService` constructor argument order (optional `$token_manager` moved to the end) to remove PHP 8.4 deprecation warning.
+- Updated README bilingual sections for token flow and group restriction instructions.
+
+### 変更 (日本語)
+- `WdbDataService` コンストラクタ引数順を修正（任意 `$token_manager` を末尾へ移動し PHP 8.4 の警告解消）。
+- README のトークンフロー／グループ制限説明を日英両方で更新。
+
+### Fixed
+- Documentation references to non-existent delegate path replaced with actual script location.
+- Minor coding standards issues in newly added kernel test (line lengths, property initialization, dependency injection usage).
+
+### 修正 (日本語)
+- 存在しない delegate パス参照を実際のスクリプト配置パスに訂正。
+- 新規 Kernel テスト内のコーディング規約上の細かな問題（行長 / プロパティ初期化 / DI）の修正。
+
+### Known Issues / Deprecations
+- Group module triggers core annotation-to-attribute deprecation notices (expected until upstream migration to attributes; does not affect functionality).
+- Various Drupal 11.x deprecation warnings from Group entity annotations during kernel tests; non-blocking.
+
+### 既知の問題・非推奨 (日本語)
+- Group モジュール由来の annotation → attribute 変換予定による非推奨警告（上流移行待ち、機能影響なし）。
+- Kernel テスト時に発生する Drupal 11.x の Group エンティティ関連 deprecation は非ブロッキング。
+
+## [1.5.6] - 2025-11-XX
+- Previous internal maintenance release (baseline prior to access policy tests and token workflow docs).
+
+---
+Semantic Versioning is followed informally. Patch releases include internal refactors or documentation; minor features will bump the minor number when larger API changes occur.# Changelog
+
 All notable changes to WDB Core will be documented in this file.
 
 ## [1.5.6] - 2025-11-11

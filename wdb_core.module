@@ -151,6 +151,7 @@ function wdb_core_entity_insert(EntityInterface $entity) {
       $config->set('pageNavigation', 'left-to-right');
       $config->set('hullConcavity', 20);
       $config->set('allowAnonymous', FALSE);
+      $config->set('group_uuid', NULL);
       $config->set('iiif_server_scheme', 'https');
       $config->set('iiif_server_hostname', 'your.host.name');
       $config->set('iiif_server_prefix', 'cantaloupe/iiif/3');
