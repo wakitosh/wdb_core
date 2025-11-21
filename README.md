@@ -20,7 +20,7 @@ WDB is designed to transform digital image archives into structured, searchable,
 - **Granular Annotation:** Supports detailed polygon annotations for individual characters (signs). **Word polygons are automatically calculated from these character sets**, enabling precise linguistic analysis.
 - **Flexible Linguistic Data Import:** A batch import system for linguistic data using TSV files, complete with a rollback feature for safe data management.
 - **Template Generation:** Automatically generate TSV templates from morphological analysis results (currently supporting **Japanese formats like WebChaMaMe's "Chaki import format"**) or from existing data within the system, significantly lowering the barrier to entry.
-- **Dynamic Configuration & Access Control:** Manage all module and subsystem settings through a unified administrative UI. Configure whether to **make gallery and search pages public to anonymous users for each collection** (subsystem) of documents.
+- **Dynamic Configuration & Access Control:** Manage all module and subsystem settings through a unified administrative UI. Configure whether to **make gallery and search pages public to anonymous users**, or **restrict access to members of a specific Drupal Group** for each collection.
 - **IIIF Presentation API v3 Compliant:** Automatically generates IIIF Presentation API v3 manifests, including word-level annotations with rich, linked-data-ready descriptions, ensuring interoperability with external viewers like Mirador 3.
 - **Customizable Data Export:** Export linguistic data in **TEI/XML and RDF/XML formats**. **Templates for these formats can be edited directly within the administrative UI**, allowing for user-defined output structures.
 - **Deep Views Integration:** Full integration with Drupal's Views module allows site administrators to create completely customized search result pages and data listings without writing any code.
@@ -36,6 +36,7 @@ WDB is designed to transform digital image archives into structured, searchable,
   - File, Image
   - Field, Field UI
   - jQuery UI, jQuery UI Dialog
+  - Group
 - **Optional:**
   - **IIIF Image Server (Cantaloupe recommended)** (for serving your own images)
 
@@ -73,6 +74,7 @@ After installation, all WDB-related management pages are consolidated under the 
    - **Important:** It is recommended to set the **IIIF Identifier Pattern** at this stage, before creating any `WDB Source` entities. This ensures that `image_identifier` values are generated correctly from the start. If you want to modify the `image_identifier` after creating the `WDB Source` entity (i.e., after the annotation page entity has been automatically created), enter the **IIIF Identifier Pattern** and click the **Apply pattern to existing pages in "{subsystem_name}"** button in the **Update Existing Pages** section.
    - **IIIF Server Prefix:** Do not URL-encode this value.
    - **Allow anonymous access:** Check this to make the gallery and search pages for this subsystem public. Otherwise, users will need the "View non-public WDB gallery pages" or "Access WDB search form" permissions, respectively.
+   - **Restrict via Drupal Group:** Optionally select a Drupal Group to limit access to its members. If the Group module is not installed, you can manually enter a Group UUID.
    - **Hull Concavity:** Controls the tightness of the auto-generated word polygon. A smaller value creates a tighter, more concave shape. However, `0` results in a convex hull.
 3. **Define a Source:** Go to `WDB > Dashboard > Content Management > Manage Sources` and create a new `WDB Source` entity. Select the subsystem you just created.
 4. **Update Annotation Pages:** When a new Source is created, Annotation Page entities are automatically generated based on the "Pages" field. Navigate to `WDB > Dashboard > Content Management > Manage Annotation Pages` to edit these pages and confirm the `image_identifier` has been generated correctly. You can also manually override it here if needed.
@@ -287,7 +289,7 @@ WDB は、デジタル化された画像アーカイブを、学術研究と公�
 - **詳細なアノテーション機能:** 個々の文字（sign）に対するポリゴン形式でのアノテーションをサポート。**単語のポリゴンは、これらの文字の集合から自動的に計算され**、精密な言語分析を可能にします。
 - **柔軟な言語データ投入:** TSV ファイルを用いた言語データ一括投入システム。安全なデータ管理のためのロールバック機能も完備。
 - **テンプレート生成機能:** 形態素解析結果（現在は **Web茶まめ の「Chaki インポート形式」等の日本語フォーマットに対応**）や、システム内の既存データから、TSV テンプレートを自動生成。導入のハードルを大幅に下げます。
-- **動的な設定とアクセス制御:** モジュールとサブシステム（資料群）の全設定を統一された管理画面から操作可能。資料群ごとに、**匿名ユーザーに対してギャラリー／検索ページを公開するかどうかを設定**できます。
+- **動的な設定とアクセス制御:** モジュールとサブシステム（資料群）の全設定を統一された管理画面から操作可能。資料群ごとに、**匿名ユーザーへの公開**や、**特定の Drupal Group メンバーへのアクセス制限**を設定できます。
 - **IIIF Presentation API v3 準拠:** 単語レベルのアノテーション（豊富なリンク情報付き）を含む IIIF Presentation API v3 準拠のマニフェストを自動生成し、Mirador 3 など外部ビューアとの相互運用性を保証します。
 - **カスタマイズ可能なデータエクスポート:** 言語データを **TEI/XML および RDF/XML 形式**でエクスポート可能。**これらのフォーマットのテンプレートは管理画面から直接編集でき**、ユーザーが自由に出力構造を定義できます。
 - **Views との深い連携:** Drupal の Views モジュールと完全に統合。検索結果や一覧ページをコード不要で柔軟に構築できます。
@@ -303,6 +305,7 @@ WDB は、デジタル化された画像アーカイブを、学術研究と公�
   - File, Image
   - Field, Field UI
   - jQuery UI, jQuery UI Dialog
+  - Group
 - **オプション:**
   - **IIIF 画像サーバ（Cantaloupe 推奨）**
 
@@ -340,6 +343,7 @@ WDB は、デジタル化された画像アーカイブを、学術研究と公�
    - **重要:** `image_identifier`を正しく自動生成するために、この段階で **IIIF Identifier Pattern** を設定することを推奨します。この設定は、`WDB Source` **エンティティを作成する前**に行ってください。`WDB Source`エンティティ作成後（すなわちアノテーションページエンティティが自動作成された後）に`image_identifier`を修正したい場合には、**IIIF Identifier Pattern**を入力した上で、**Update Existing Pages**セクションの **Apply pattern to existing pages in {subsystem_name}** ボタンをクリックしてください。
    - **IIIF Server Prefix:** URLエンコードは不要です。
    - **Allow anonymous access:** これにチェックを入れると、このサブシステムのギャラリーページと検索フォームが匿名ユーザーに公開されます。チェックを外した場合、それぞれ「View non-public WDB gallery pages」または「Access WDB search form」の権限が必要になります。初期状態では非公開です。
+   - **Restrict via Drupal Group:** 特定の Drupal Group のメンバーのみにアクセスを制限したい場合に選択します。Group モジュールがインストールされていない場合は、Group UUID を直接入力することも可能です。
    - **Hull Concavity:** 文字の集合から単語のポリゴンを生成する際の、座標の密着度（凹みの大きさ）を制御します。値が小さいほど凹みが大きくなります（ただし、0で凸包）。
 3. **資料情報の定義:** `WDB > ダッシュボード > コンテンツ管理 > 資料の管理` に移動し、新しい `WDB Source` エンティティを作成します。先ほど作成したサブシステムを選択してください。
 4. **アノテーションページの更新:** 新しい資料を作成すると、そのページ数分のアノテーションページエンティティが自動生成されます。`WDB > ダッシュボード > コンテンツ管理 > アノテーションページの管理` に移動し、`image_identifier`が正しく生成されていることを確認します。必要であれば、ここで個別に値を上書きすることも可能です。

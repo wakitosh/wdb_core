@@ -4,12 +4,14 @@ All notable changes to this module will be documented in this file.
 
 ## [1.5.7] - 2025-11-21
 ### Added
+- Integration with Drupal Group module for subsystem access control.
 - Kernel tests for subsystem access policy (anonymous, permission fallback, group restriction scenarios).
 - Group autocomplete UI in subsystem settings (UUID fallback when Group module absent).
 - Signed IIIF token workflow documentation (English/Japanese) including reverse proxy header requirements, delegate script and harness usage, and troubleshooting.
 - Sample Cantaloupe delegate script and local Ruby harness.
 
 ### 追加 (日本語)
+- Drupal Group モジュールとの連携によるサブシステムアクセス制御。
 - サブシステムアクセスポリシーの Kernel テスト（匿名許可 / 権限フォールバック / グループ制限シナリオ）。
 - サブシステム設定フォームに Drupal Group オートコンプリートを追加（Group未導入時はUUID直接入力フォールバック）。
 - IIIF サイン付きトークンワークフローの日英ドキュメント（リバースプロキシ必須ヘッダー、delegate スクリプト＆ハーネス利用方法、トラブルシュート）。
