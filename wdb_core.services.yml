@@ -80,6 +80,8 @@ services:
       - '@wdb_core.data_service'
       - '@http_client_factory'
       - '@request_stack'
+      - '@wdb_core.subsystem_access_policy'
+      - '@current_user'
     tags:
       - { name: controller.service_arguments }
 

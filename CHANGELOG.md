@@ -2,6 +2,23 @@
 
 All notable changes to this module will be documented in this file.
 
+## [1.5.10] - 2025-11-23
+### Changed
+- IIIF manifests stay publicly reachable, but `IiifV3ManifestController` now withholds `wdb_token` query params unless the current viewer passes the subsystem access policy. Same-domain image servers therefore return 403 for unauthorized viewers even when the manifest is shared, while external (third-party) image hosts keep behaving openly.
+- README guidance expanded to clarify how anonymous subsystems, group-restricted subsystems, and cross-domain IIIF servers interact with the token workflow.
+
+### 変更 (日本語)
+- IIIF マニフェスト自体は公開のままにしつつ、閲覧者がサブシステムのアクセスポリシーを満たさない場合は `wdb_token` を付与しないよう `IiifV3ManifestController` を調整。同一ドメインの IIIF サーバーでは未認可ユーザーに 403 が返る一方、外部ホストの画像は従来どおり公開状態です。
+- README に匿名サブシステム、グループ制限サブシステム、そして別ドメイン IIIF サーバーのトークン連携に関する注意点を追記しました。
+
+### Fixed
+- Resolved Drupal cache rebuild failures by injecting the subsystem access policy and current user into `IiifV3ManifestController` and removing the duplicate ControllerBase property declaration.
+- Updated `wdb_core.services.yml` so the manifest controller service receives every constructor dependency, preventing container compilation errors during `drush cr`.
+
+### 修正 (日本語)
+- `IiifV3ManifestController` で ControllerBase 側のプロパティと重複していた定義を削除し、アクセスポリシー／現在のユーザーサービスを注入することで `drush cr` 時の Fatal エラーを解消しました。
+- `wdb_core.services.yml` のサービス定義を更新し、Manifest コントローラーに必要な依存サービスをすべて渡すことでコンテナビルド時の例外を防止しました。
+
 ## [1.5.9] - 2025-11-22
 ### Added
 - Configuration form for `wdb_cantaloupe_auth` so token TTL and query parameter can be edited at `/admin/config/wdb/cantaloupe-auth`.
@@ -16,10 +33,12 @@ All notable changes to this module will be documented in this file.
 ### Changed
 - IIIF token validation now falls back to Drupal session cookies when the token expires, preventing editors from being logged out mid-session even with short TTL values.
 - README bilingual sections updated to document the new token workflow, refresh behavior, and session fallback expectations.
+- Subsystems that allow anonymous access now emit plain IIIF URLs (no `wdb_token` query parameter) so manifests and thumbnails remain compatible with external viewers.
 
 ### 変更 (日本語)
 - トークン期限切れ時に Drupal セッション Cookie へフォールバックすることで、短い TTL 設定でもログイン中の編集者が 403 にならないよう改善。
 - README の日英両セクションで、新しいトークンワークフローと自動更新／フォールバックの説明を追記。
+- 匿名アクセスを許可しているサブシステムでは IIIF URL にトークンを付与しないようにし、外部ビューアでもマニフェストやサムネイルをそのまま利用できるようにしました。
 
 ## [1.5.7] - 2025-11-21
 ### Added

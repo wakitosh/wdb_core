@@ -124,12 +124,18 @@ The optional `wdb_cantaloupe_auth` submodule now ships with a signed token workf
 #### Token-based authorization flow
 
 1. When Drupal renders a gallery/editor page, `WdbDataService` issues a short-lived token via `wdb_cantaloupe_auth.token_manager` and exposes it in `drupalSettings.wdb_core.openseadragon.auth`.
-2. Every IIIF URL (info.json, tiles, thumbnails) is rewritten with a query parameter such as `?wdb_token=…` using that token.
+2. When a subsystem requires authentication (i.e., **Allow anonymous access** is unchecked), every IIIF URL (info.json, tiles, thumbnails) is rewritten with a query parameter such as `?wdb_token=…`. Anonymous-friendly subsystems leave their IIIF URLs untouched so they can be consumed by third-party viewers without query strings.
 3. Your reverse proxy forwards the original request URI and token to Cantaloupe via headers (`X-Original-URI`, `X-Original-URL`, `X-Wdb-Token`, etc.).
 4. The Cantaloupe delegate script (see below) extracts the token/cookies, calls Drupal’s `/wdb/api/cantaloupe_auth` endpoint, and passes along the identifier.
 5. Drupal validates the signature, expiration, and optional Drupal Group membership before returning `{"authorized": true/false}`. If no token is present it falls back to the historical cookie/session lookup so logged-in editors can still access tiles even before the token helper loads.
 
 The default TTL is 600 seconds. After a user logs out, previously issued IIIF URLs continue to work until their token expires; shorten `token_ttl` if you need a stricter window. Logged-in editors remain authorized even if a token expires mid-session because the delegate falls back to their Drupal session cookies, so aggressive TTL values only impact anonymous/public traffic. The viewer also refreshes its token in the background while a page stays open, which lets you safely experiment with single-digit TTLs for anonymous users without booting active editors.
+
+##### Manifest visibility and mixed-domain image servers
+
+- The IIIF Presentation API v3 manifest route intentionally remains public so external viewers (Mirador, Universal Viewer, etc.) can load metadata without custom auth.
+- `IiifV3ManifestController` only appends `wdb_token` to image URLs when the current viewer passes the subsystem's access policy. If the viewer lacks access, the manifest is still delivered but all same-domain tiles/images will 403 because they are missing a token.
+- When a subsystem points at an image server on another domain that you do not control, the module cannot enforce access. Those URLs stay public even when the subsystem itself is group-restricted, so plan your deployment accordingly.
 
 #### Drupal-side configuration
 
@@ -180,6 +186,8 @@ RequestHeader set X-Original-URL    "https://%{HTTP_HOST}s%{REQUEST_URI}s"
 SetEnvIfExpr "req_query('wdb_token') =~ /.+/" wdb_token_qs=$0
 RequestHeader set X-Wdb-Token "%{wdb_token_qs}e"
 ```
+
+> Note: When the subsystem allows anonymous access there is no `wdb_token` query parameter, so the forwarded `X-Wdb-Token` header will be empty. Drupal still authorizes those requests automatically.
 
 Adjust the upstream host/port to match your deployment (Docker service name, UNIX socket, load balancer, etc.).
 
@@ -394,12 +402,18 @@ WDB は、デジタル化された画像アーカイブを、学術研究と公�
 #### トークンベースの認証フロー
 
 1. Drupal がギャラリー／エディタページを描画する際、`WdbDataService` が `wdb_cantaloupe_auth.token_manager` 経由で短命トークンを発行し、`drupalSettings.wdb_core.openseadragon.auth` に書き込みます。
-2. 生成されるすべての IIIF URL (info.json、タイル、サムネイル) に `?wdb_token=...` のようなクエリを付与します。
+2. サブシステムで匿名アクセスを禁止している場合（Allow anonymous access をオフにしている場合）は、生成されるすべての IIIF URL (info.json、タイル、サムネイル) に `?wdb_token=...` のようなクエリを付与します。匿名アクセスを許可しているサブシステムでは URL を書き換えず、そのまま外部ビューアで利用できます。
 3. リバースプロキシは、元のリクエスト URI とトークンを `X-Original-URI` や `X-Wdb-Token` ヘッダーとして Cantaloupe に転送します。
 4. Cantaloupe の delegate スクリプトがトークン／Cookie を取り出し、Drupal の `/wdb/api/cantaloupe_auth` エンドポイントに POST します。
 5. Drupal は署名・有効期限・必要であれば Drupal Group メンバーシップを検証し、`{"authorized": true/false}` を返します。トークンが無い場合は従来の Cookie のみで照合します。
 
 標準のトークン TTL は 600 秒です。ログアウト後もしばらくタイルが表示されるのは、発行済みトークンが期限切れになるまで有効だからです。より厳格にしたい場合は `token_ttl` を短くしてください。なお、ログイン中の編集者はトークンの有効期限が切れても Drupal セッション Cookie へのフォールバックで継続して認可されるため、TTL を極端に短くしても影響を受けるのは匿名／公開アクセスのみです。また、ビューアはページを表示したままでも自動的に新しいトークンを取得するため、編集者の作業を中断させずに短い TTL を試すことができます。
+
+##### マニフェスト公開と異なるドメインの画像サーバー
+
+- Mirador や Universal Viewer など外部ビューアから参照できるよう、IIIF Presentation API v3 のマニフェスト URL は常に公開のままとしています。
+- `IiifV3ManifestController` は、閲覧者が当該サブシステムのアクセスポリシーを満たした場合のみ IIIF URL に `wdb_token` を付与します。権限がない閲覧者でもマニフェスト自体は取得できますが、同一ドメイン上のタイルや画像はトークン無しのため 403 で止まります。
+- 逆に、別ドメイン（外部組織や公開 CDN など）の IIIF サーバーを指すサブシステムでは、wdb_core 側でアクセス制御を強制できません。その場合は画像 URL が常に公開扱いとなる点に注意してください。
 
 #### Drupal 側の設定
 
@@ -450,6 +464,8 @@ RequestHeader set X-Original-URL    "https://%{HTTP_HOST}s%{REQUEST_URI}s"
 SetEnvIfExpr "req_query('wdb_token') =~ /.+/" wdb_token_qs=$0
 RequestHeader set X-Wdb-Token "%{wdb_token_qs}e"
 ```
+
+> 補足: Allow anonymous access をオンにしているサブシステムでは `wdb_token` クエリ自体が付与されないため、転送される `X-Wdb-Token` ヘッダーは空になります。その場合でも Drupal 側で自動的に許可されます。
 
 上流ホスト名やポート番号は実際の環境に合わせて変更してください。
 

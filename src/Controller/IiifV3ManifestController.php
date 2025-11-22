@@ -6,7 +6,9 @@ use Drupal\Core\Controller\ControllerBase;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Http\ClientFactory;
+use Drupal\Core\Session\AccountProxyInterface;
 use Drupal\Core\Url;
+use Drupal\wdb_core\Access\SubsystemAccessPolicyInterface;
 use Drupal\wdb_core\Service\WdbDataService;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -40,6 +42,13 @@ class IiifV3ManifestController extends ControllerBase implements ContainerInject
   protected RequestStack $requestStack;
 
   /**
+   * The subsystem access policy.
+   *
+   * @var \Drupal\wdb_core\Access\SubsystemAccessPolicyInterface
+   */
+  protected SubsystemAccessPolicyInterface $accessPolicy;
+
+  /**
    * Constructs a new IiifV3ManifestController object.
    *
    * @param \Drupal\Core\Entity\EntityTypeManagerInterface $entity_type_manager
@@ -50,12 +59,18 @@ class IiifV3ManifestController extends ControllerBase implements ContainerInject
    *   The HTTP client factory.
    * @param \Symfony\Component\HttpFoundation\RequestStack $request_stack
    *   The request stack.
+   * @param \Drupal\wdb_core\Access\SubsystemAccessPolicyInterface $access_policy
+   *   The subsystem access policy service.
+   * @param \Drupal\Core\Session\AccountProxyInterface $current_user
+   *   The current user proxy.
    */
-  public function __construct(EntityTypeManagerInterface $entity_type_manager, WdbDataService $wdb_data_service, ClientFactory $http_client_factory, RequestStack $request_stack) {
+  public function __construct(EntityTypeManagerInterface $entity_type_manager, WdbDataService $wdb_data_service, ClientFactory $http_client_factory, RequestStack $request_stack, SubsystemAccessPolicyInterface $access_policy, AccountProxyInterface $current_user) {
     $this->entityTypeManager = $entity_type_manager;
     $this->wdbDataService = $wdb_data_service;
     $this->httpClientFactory = $http_client_factory;
     $this->requestStack = $request_stack;
+    $this->accessPolicy = $access_policy;
+    $this->currentUser = $current_user;
   }
 
   /**
@@ -67,6 +82,8 @@ class IiifV3ManifestController extends ControllerBase implements ContainerInject
       $container->get('wdb_core.data_service'),
       $container->get('http_client_factory'),
       $container->get('request_stack'),
+      $container->get('wdb_core.subsystem_access_policy'),
+      $container->get('current_user'),
     );
   }
 
@@ -111,6 +128,8 @@ class IiifV3ManifestController extends ControllerBase implements ContainerInject
     if (!$subsys_config) {
       throw new NotFoundHttpException('Subsystem configuration not found.');
     }
+
+    $user_has_gallery_access = $this->accessPolicy->userHasAccess($subsysname, $this->currentUser, ['permission' => 'view wdb gallery pages']);
 
     // Add the viewingDirection property from the subsystem configuration.
     $page_navigation = $subsys_config->get('pageNavigation');
@@ -217,6 +236,7 @@ class IiifV3ManifestController extends ControllerBase implements ContainerInject
       }
 
       $info_json_url = $iiif_base_url . '/' . rawurlencode($image_identifier) . '/info.json';
+      // Always sign server-side fetches so Cantaloupe accepts the request.
       $signed_info_json_url = $this->wdbDataService->appendIiifTokenToUrl($info_json_url, $subsysname, $image_identifier);
 
       // Fetch image dimensions from the IIIF server's info.json file.
@@ -251,15 +271,15 @@ class IiifV3ManifestController extends ControllerBase implements ContainerInject
 
       // Define the base URI for the image service (without /info.json).
       $image_service_uri = $iiif_base_url . '/' . rawurlencode($image_identifier);
-      $signed_image_service_uri = $this->wdbDataService->appendIiifTokenToUrl($image_service_uri, $subsysname, $image_identifier);
+      $public_image_service_uri = $this->maybeAppendIiifToken($image_service_uri, $subsysname, $image_identifier, $user_has_gallery_access);
 
       // Define the URI for the actual image content to be displayed.
       $image_content_uri = $image_service_uri . '/full/max/0/default.' . $image_ext;
-      $image_content_uri = $this->wdbDataService->appendIiifTokenToUrl($image_content_uri, $subsysname, $image_identifier);
+      $public_image_content_uri = $this->maybeAppendIiifToken($image_content_uri, $subsysname, $image_identifier, $user_has_gallery_access);
 
       // Generate the thumbnail image URL (150px width, auto height).
       $thumbnail_image_uri = $image_service_uri . '/full/150,/0/default.' . $image_ext;
-      $thumbnail_image_uri = $this->wdbDataService->appendIiifTokenToUrl($thumbnail_image_uri, $subsysname, $image_identifier);
+      $public_thumbnail_uri = $this->maybeAppendIiifToken($thumbnail_image_uri, $subsysname, $image_identifier, $user_has_gallery_access);
 
       $canvas = [
         'id' => $canvas_uri,
@@ -270,12 +290,12 @@ class IiifV3ManifestController extends ControllerBase implements ContainerInject
         // Add the thumbnail property.
         'thumbnail' => [
           [
-            'id' => $thumbnail_image_uri,
+            'id' => $public_thumbnail_uri,
             'type' => 'Image',
             'format' => 'image/jpeg',
             'service' => [
               [
-                'id' => $signed_image_service_uri,
+                'id' => $public_image_service_uri,
                 'type' => 'ImageService3',
                 'profile' => 'level2',
               ],
@@ -292,14 +312,14 @@ class IiifV3ManifestController extends ControllerBase implements ContainerInject
                 'type' => 'Annotation',
                 'motivation' => 'painting',
                 'body' => [
-                  'id' => $image_content_uri,
+                  'id' => $public_image_content_uri,
                   'type' => 'Image',
                   'format' => 'image/jpeg',
                   'width' => $width,
                   'height' => $height,
                   'service' => [
                     [
-                      'id' => $signed_image_service_uri,
+                      'id' => $public_image_service_uri,
                       'type' => 'ImageService3',
                       'profile' => 'level2',
                     ],
@@ -342,6 +362,13 @@ class IiifV3ManifestController extends ControllerBase implements ContainerInject
     $response->headers->set('Content-Type', 'application/ld+json;profile="http://iiif.io/api/presentation/3/context.json"');
 
     return $response;
+  }
+
+  /**
+   * Returns a signed IIIF URL only when the viewer may access the subsystem.
+   */
+  protected function maybeAppendIiifToken(string $url, string $subsysname, string $image_identifier, bool $should_sign): string {
+    return $should_sign ? $this->wdbDataService->appendIiifTokenToUrl($url, $subsysname, $image_identifier) : $url;
   }
 
 }

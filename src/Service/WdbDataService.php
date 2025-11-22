@@ -75,6 +75,13 @@ class WdbDataService {
   protected array $iiifTokenCache = [];
 
   /**
+   * Cache for subsystem anonymous access flags keyed by machine name.
+   *
+   * @var array<string,bool>
+   */
+  protected array $anonymousSubsystemCache = [];
+
+  /**
    * Constructs a new WdbDataService object.
    *
    * Note: Optional parameters must appear after required ones to avoid
@@ -130,7 +137,7 @@ class WdbDataService {
    * Returns the token payload for front-end consumers.
    */
   public function getIiifAuthContext(string $subsysname, string $image_identifier): array {
-    if (!$this->tokenManager) {
+    if (!$this->tokenManager || $this->subsystemAllowsAnonymous($subsysname)) {
       return [];
     }
     $token = $this->getIiifToken($subsysname, $image_identifier);
@@ -168,7 +175,10 @@ class WdbDataService {
    * Appends a signed token to a IIIF URL when available.
    */
   public function appendIiifTokenToUrl(string $url, string $subsysname, string $image_identifier): string {
-    if (!$this->tokenManager || trim($url) === '' || trim($subsysname) === '' || trim($image_identifier) === '') {
+    if (!$this->tokenManager || $this->subsystemAllowsAnonymous($subsysname)) {
+      return $url;
+    }
+    if (trim($url) === '' || trim($subsysname) === '' || trim($image_identifier) === '') {
       return $url;
     }
     $token = $this->getIiifToken($subsysname, $image_identifier);
@@ -191,7 +201,7 @@ class WdbDataService {
    * Issues (and caches) a token for the provided subsystem/image pair.
    */
   protected function getIiifToken(string $subsysname, string $image_identifier): ?string {
-    if (!$this->tokenManager) {
+    if (!$this->tokenManager || $this->subsystemAllowsAnonymous($subsysname)) {
       return NULL;
     }
     $subsysname = trim($subsysname);
@@ -222,6 +232,21 @@ class WdbDataService {
   protected function buildIiifTokenCacheKey(string $subsysname, string $image_identifier): string {
     $uid = (int) $this->currentUser->id();
     return strtolower($subsysname) . '::' . $image_identifier . '::' . $uid;
+  }
+
+  /**
+   * Determines whether a subsystem allows anonymous access.
+   */
+  protected function subsystemAllowsAnonymous(string $subsysname): bool {
+    if ($subsysname === '') {
+      return FALSE;
+    }
+    $cache_key = strtolower($subsysname);
+    if (!array_key_exists($cache_key, $this->anonymousSubsystemCache)) {
+      $config = $this->getSubsystemConfig($subsysname);
+      $this->anonymousSubsystemCache[$cache_key] = (bool) ($config?->get('allowAnonymous'));
+    }
+    return $this->anonymousSubsystemCache[$cache_key];
   }
 
   /**
