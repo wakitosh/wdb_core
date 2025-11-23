@@ -11,6 +11,7 @@ require 'json'
 
 DRUPAL_AUTH_ENDPOINT = ENV['DRUPAL_AUTH_ENDPOINT']
 TOKEN_QUERY_PARAM    = ENV['WDB_TOKEN_PARAM'] || 'wdb_token'
+TOKEN_ONLY_MODE      = ENV['WDB_TOKEN_ONLY'] == 'true'
 TOKEN_HEADER_CANDIDATES = [
   'X-Wdb-Token',
   'X-Original-URI',
@@ -76,8 +77,12 @@ def pre_authorize(options = {})
   return true if context['client_ip'].to_s.start_with?('127.0.0.1')
 
   token = resolve_token_from_context
-  cookies_hash = context['cookies'] || {}
-  cookies = cookies_hash.map { |k, v| "#{k}=#{v}" }
+
+  cookies = []
+  unless TOKEN_ONLY_MODE
+    cookies_hash = context['cookies'] || {}
+    cookies = cookies_hash.map { |k, v| "#{k}=#{v}" }
+  end
 
   payload_hash = {
     identifier: context['identifier'],

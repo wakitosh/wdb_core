@@ -195,6 +195,7 @@ Adjust the upstream host/port to match your deployment (Docker service name, UNI
 
 - A sample delegate script is provided at `web/modules/custom/wdb_core/modules/wdb_cantaloupe_auth/scripts/delegate.rb`. It shows how to extract the token from `request_uri`, `request_headers`, and forwarded headers. Copy it into your Cantaloupe deployment (as `delegate.rb` or `require_relative` from your existing delegate) and set `DRUPAL_AUTH_ENDPOINT`.
 - Set `DRUPAL_AUTH_ENDPOINT` to the internal address of `/wdb/api/cantaloupe_auth`. You can optionally override the query parameter name by exporting `WDB_TOKEN_PARAM`.
+- To require **tokens only** (no cookie fallback) at the image server level, set `WDB_TOKEN_ONLY=true` in the Cantaloupe environment. When this flag is on the delegate will not forward any browser cookies to Drupal; only valid `wdb_token` values will authorize requests.
 - A CLI harness (`web/modules/custom/wdb_core/modules/wdb_cantaloupe_auth/scripts/delegate_harness.rb`) lets you test the flow without running Cantaloupe:
 
 ```bash
@@ -473,6 +474,7 @@ RequestHeader set X-Wdb-Token "%{wdb_token_qs}e"
 
 - サンプルの delegate は `web/modules/custom/wdb_core/modules/wdb_cantaloupe_auth/scripts/delegate.rb` に含まれています。`request_uri` や転送ヘッダーからのトークン抽出方法が実装されています。Cantaloupe の環境にコピー（`delegate.rb` として設置、または既存 delegate から `require_relative`）し、`DRUPAL_AUTH_ENDPOINT` を設定してください。
 - `DRUPAL_AUTH_ENDPOINT` は `/wdb/api/cantaloupe_auth` への内部 URL に設定します。クエリパラメータ名を変えたい場合は環境変数 `WDB_TOKEN_PARAM` を指定します。
+- 画像サーバ側で **トークンのみ必須（Cookie フォールバックなし）** にしたい場合は、Cantaloupe の実行環境に `WDB_TOKEN_ONLY=true` を設定してください。このフラグが有効なとき、delegate はブラウザ Cookie を Drupal に転送せず、有効な `wdb_token` が無いリクエストはすべて拒否されます。
 - Cantaloupe を起動せずに試せる CLI ハーネス `web/modules/custom/wdb_core/modules/wdb_cantaloupe_auth/scripts/delegate_harness.rb` も用意しています。
 
 ```bash
