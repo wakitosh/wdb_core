@@ -44,23 +44,23 @@
   <!-- Step 1: Request -->
   <text x="140" y="230" class="step-label">①</text>
   <path d="M 140 180 V 260" class="arrow" marker-end="url(#arrowhead)"/>
-  <text x="40" y="285" class="desc">画像タイルを要求</text>
-  <text x="40" y="305" class="mono">GET /iiif/2/{id}/...</text>
-  <text x="40" y="325" class="desc">(Cookieも送信)</text>
+  <text x="40" y="285" class="desc">トークン付きで画像タイルを要求</text>
+  <text x="40" y="305" class="mono">GET /iiif/3/{id}/... ?wdb_token=...</text>
+  <text x="40" y="325" class="desc">(Cookie も同時に送信される場合あり)</text>
 
   <!-- Step 2: Delegate & Check -->
   <text x="417.5" y="230" class="step-label">②</text>
   <path d="M 240 295 H 595" class="arrow" marker-end="url(#arrowhead)"/>
-  <text x="290" y="280" class="desc">delegate.rb が認可を委譲</text>
+  <text x="290" y="280" class="desc">delegates.rb が認可を Drupal に委譲</text>
   <text x="290" y="315" class="mono">POST /wdb/api/cantaloupe_auth</text>
-  <text x="310" y="335" class="desc">{ cookies, identifier }</text>
+  <text x="310" y="335" class="desc">{ token (wdb_token), cookies? , identifier }</text>
 
   <!-- Step 3: Authorize -->
   <text x="695" y="230" class="step-label">③</text>
   <path d="M 695 180 V 360" class="arrow" marker-end="url(#arrowhead)"/>
-  <text x="610" y="385" class="desc">セッションと権限を検証</text>
-  <text x="610" y="405" class="mono">"View non-public WDB</text>
-  <text x="610" y="422" class="mono"> gallery pages"</text>
+  <text x="610" y="385" class="desc">トークン署名 / TTL / 権限を検証</text>
+  <text x="610" y="405" class="mono">token → サブシステム設定</text>
+  <text x="610" y="422" class="mono">+ 必要に応じて Cookie / Group</text>
 
   <!-- Step 4: Respond -->
   <path d="M 595 400 H 517.5" class="arrow" marker-end="url(#arrowhead)"/>

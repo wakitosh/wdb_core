@@ -1,5 +1,5 @@
 #!/usr/bin/env ruby
-# Minimal harness to validate README's delegate.rb sample.
+# Minimal harness to validate README's delegates.rb sample.
 # Usage:
 #   DRUPAL_AUTH_ENDPOINT="https://your.host.name/wdb/api/cantaloupe_auth" \
 #   ruby delegate_harness.rb \
@@ -61,7 +61,7 @@ def context
   $context
 end
 
- # Token extraction and pre_authorize are provided by delegate.rb
+  # Token extraction and pre_authorize are provided by delegates.rb
 
 ok = pre_authorize
 puts({ authorized: ok }.to_json)
