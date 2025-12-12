@@ -48,9 +48,11 @@ class WdbProtectedDeleteForm extends ContentEntityConfirmFormBase {
     $messages = $this->findReferencesMessages($entity);
     if ($messages) {
       // Show a user-friendly error summary instead of a 500 error.
-      $form_state->setErrorByName('confirm', new TranslatableMarkup('This item cannot be deleted because it is referenced by other content: @details', [
+      $message = new TranslatableMarkup('This item cannot be deleted because it is referenced by other content: @details', [
         '@details' => implode('; ', $messages),
-      ]));
+      ]);
+      $form_state->setErrorByName('confirm', $message);
+      $this->messenger()->addError($message);
     }
   }
 
