@@ -2,6 +2,13 @@
 
 All notable changes to this module will be documented in this file.
 
+## [1.5.11] - 2025-12-13
+### Fixed
+- `WdbProtectedDeleteForm` now also sends the “referenced content” error message to Drupal Messenger, guaranteeing that administrators see why a delete action was blocked even when the confirm element is hidden by the theme.
+
+### 修正 (日本語)
+- `WdbProtectedDeleteForm` が参照チェックで削除を止めた際に、フォームのエラーに加えて Messenger にも通知するようにし、テーマの構造に関わらず「他コンテンツに参照されているため削除できない」理由が常に表示されるようにしました。
+
 ## [1.5.10] - 2025-11-23
 ### Changed
 - IIIF manifests stay publicly reachable, but `IiifV3ManifestController` now withholds `wdb_token` query params unless the current viewer passes the subsystem access policy. Same-domain image servers therefore return 403 for unauthorized viewers even when the manifest is shared, while external (third-party) image hosts keep behaving openly.
