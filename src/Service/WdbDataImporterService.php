@@ -748,11 +748,14 @@ class WdbDataImporterService {
 
     if (!empty($entities)) {
       $entity = reset($entities);
-      /**
-       * @var \Drupal\wdb_core\Entity\WdbWordUnit $entity
-       */
+      if (!$entity instanceof WdbWordUnit) {
+        throw new \RuntimeException('Unexpected entity type (WdbWordUnit) on existing load.');
+      }
       // Reload a fresh instance to avoid any stale field states.
       $entity = $storage->load($entity->id());
+      if (!$entity instanceof WdbWordUnit) {
+        throw new \RuntimeException('Failed to reload WdbWordUnit entity.');
+      }
       $existing_items = $entity->get('annotation_page_refs')->getValue();
       $existing_page_refs = array_map(
         static function ($item) {
@@ -782,6 +785,9 @@ class WdbDataImporterService {
     $entity->save();
     // Append initial page occurrence on a fresh instance.
     $entity = $storage->load($entity->id());
+    if (!$entity instanceof WdbWordUnit) {
+      throw new \RuntimeException('Failed to reload newly created WdbWordUnit entity.');
+    }
     $entity->get('annotation_page_refs')->appendItem(['target_id' => (int) $page->id()]);
     $entity->save();
 
