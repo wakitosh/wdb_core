@@ -24,6 +24,10 @@ class WdbProtectedDeleteForm extends ContentEntityConfirmFormBase {
    * {@inheritdoc}
    */
   public function getCancelUrl() {
+    if ($this->entity instanceof EntityInterface && $this->entity->hasLinkTemplate('collection')) {
+      return $this->entity->toUrl('collection');
+    }
+
     return $this->entity->toUrl('canonical');
   }
 
@@ -53,6 +57,46 @@ class WdbProtectedDeleteForm extends ContentEntityConfirmFormBase {
       ]);
       $form_state->setErrorByName('confirm', $message);
       $this->messenger()->addError($message);
+    }
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function submitForm(array &$form, FormStateInterface $form_state) {
+    $entity = $this->entity;
+    if (!$entity instanceof EntityInterface) {
+      return;
+    }
+
+    $type = $entity->getEntityTypeId();
+    $id = (string) $entity->id();
+
+    try {
+      $entity->delete();
+      $this->messenger()->addStatus($this->t('Deleted %type %id.', [
+        '%type' => $type,
+        '%id' => $id,
+      ]));
+      \Drupal::logger('wdb_core')->notice('Deleted @type @id via WdbProtectedDeleteForm.', [
+        '@type' => $type,
+        '@id' => $id,
+      ]);
+
+      if ($entity->hasLinkTemplate('collection')) {
+        $form_state->setRedirectUrl($entity->toUrl('collection'));
+      }
+    }
+    catch (\Throwable $e) {
+      $this->messenger()->addError($this->t('Delete failed: @message', [
+        '@message' => $e->getMessage(),
+      ]));
+      \Drupal::logger('wdb_core')->error('Delete failed for @type @id: @message', [
+        '@type' => $type,
+        '@id' => $id,
+        '@message' => $e->getMessage(),
+      ]);
+      $form_state->setRebuild(TRUE);
     }
   }
 

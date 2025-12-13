@@ -21,6 +21,17 @@ class WdbAnnotationPageListBuilder extends EntityListBuilder {
   /**
    * {@inheritdoc}
    */
+  public function render() {
+    $build = parent::render();
+    // Avoid stale admin listings (especially paged URLs like ?page=N) after
+    // creating/deleting entities.
+    $build['#cache']['max-age'] = 0;
+    return $build;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
   public function buildHeader() {
     return $this->buildConfigurableHeader([
       'id',

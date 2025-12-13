@@ -8,10 +8,20 @@ All notable changes to this module will be documented in this file.
 - Template TSV generation now includes `image_identifier` (placed after `page`) and outputs stored values only, avoiding any dependency on subsystem settings.
 - README and the import form help text updated to document the optional `image_identifier` column and its column order.
 
+### Fixed
+- `WdbProtectedDeleteForm` now redirects back to the entity collection (admin list) after cancel/delete when available, avoiding confusing 404/back-cache behavior when deleting from list pages.
+- `WdbProtectedDeleteForm` now emits an explicit success/error Messenger message (and watchdog log) on submit so admins can tell whether a delete actually occurred.
+- The WDB Annotation Page admin list (`/admin/content/wdb_annotation_page`) is now explicitly uncacheable to prevent stale paged listings after create/delete.
+
 ### 変更 (日本語)
 - TSV 取込で `wdb_annotation_page.image_identifier` を永続化するように変更しました。TSV に値があればそれを優先し、無い場合はサブシステムの IIIF Identifier Pattern から生成できる場合に生成して保存します。既存値は上書きせず、不一致は warning として通知します。
 - テンプレ TSV 生成に `image_identifier` 列を追加しました（`page` の次）。テンプレ生成は保存済み値のみを出力し、サブシステム設定への依存を避けています。
 - README と取込フォームの説明文を更新し、任意列 `image_identifier` と列順を明記しました。
+
+### 修正 (日本語)
+- `WdbProtectedDeleteForm` のキャンセル／削除後の遷移先を、可能な場合はエンティティの一覧（collection / 管理リスト）へ戻るように変更し、一覧から削除した際の 404 表示やブラウザの戻るキャッシュによる「削除できていないように見える」挙動を避けました。
+- `WdbProtectedDeleteForm` の送信時に、削除成功／失敗が分かる Messenger 通知（および watchdog ログ）を追加し、実際に削除が行われたか判別できるようにしました。
+- アノテーションページの管理一覧（`/admin/content/wdb_annotation_page`）を明示的にキャッシュ無効化し、追加／削除後にページ付きURL（`?page=N`）で古い一覧が残って見える問題を防止しました。
 
 ## [1.5.11] - 2025-12-13
 ### Fixed
