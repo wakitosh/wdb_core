@@ -4,6 +4,7 @@ namespace Drupal\Tests\wdb_core\Kernel;
 
 use Drupal\KernelTests\KernelTestBase;
 use Drupal\taxonomy\Entity\Vocabulary;
+use Drupal\wdb_core\Entity\WdbAnnotationPage;
 
 /**
  * Kernel tests for WdbDataImporterService.
@@ -12,7 +13,6 @@ use Drupal\taxonomy\Entity\Vocabulary;
  * @group wdb_core
  * @category Tests
  * @package wdb_core
- * @author WDB
  * @license GPL-2.0-or-later
  * @link https://www.drupal.org/project/drupal
  */
@@ -132,6 +132,16 @@ class WdbDataImporterServiceTest extends KernelTestBase {
     // 5. Assert that the operation was successful.
     $this->assertTrue($success);
     $this->assertEquals(1, $context['results']['created']);
+
+    // Verify the page image identifier is persisted from TSV.
+    $pages = $this->entityTypeManager->getStorage('wdb_annotation_page')->loadByProperties([
+      'source_ref' => $source->id(),
+      'page_number' => 1,
+    ]);
+    $this->assertNotEmpty($pages);
+    $page_after = reset($pages);
+    $this->assertInstanceOf(WdbAnnotationPage::class, $page_after);
+    $this->assertEquals('test/image.jpg', $page_after->get('image_identifier')->value);
 
     // 6. Verify that the entities were created correctly in the database.
     $storage = $this->entityTypeManager->getStorage('wdb_word_unit');

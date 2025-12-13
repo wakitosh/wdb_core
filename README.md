@@ -101,6 +101,10 @@ The following columns are expected in the data import file. Fields marked with \
 
 - `source`\*: The "Source Identifier" of the WdbSource entity.
 - `page`\*: The page number.
+- `image_identifier`: *(Optional but recommended)* The IIIF image identifier for the page (the identifier part used in IIIF Image API URLs). Use this when a page needs an exception that cannot be expressed by the subsystem's **IIIF Identifier Pattern**.
+  - If provided, the importer persists it on the corresponding Annotation Page.
+  - If empty, the importer tries to generate and persist it from the subsystem pattern.
+  - If the Annotation Page already has a stored value, it is not overwritten (a mismatch is reported as a warning).
 - `labelname`\*: The label text entered for each polygon (e.g., "1-1").
 - `sign`\*: The character symbol or code.
 - `function`: The function of the character (e.g., phonogram, logogram).
@@ -380,6 +384,10 @@ WDB は、デジタル化された画像アーカイブを、学術研究と公�
 
 - `source`\*: 資料名。WdbSourceエンティティの「Source Identifier」と一致させる必要があります。
 - `page`\*: ページ番号。
+- `image_identifier`: （任意。ただし推奨）ページ画像の IIIF 画像識別子（IIIF Image API の URL に使われる identifier 部分）です。サブシステム設定の **IIIF Identifier Pattern** だけでは表現できない例外ページがある場合に、TSV側で明示します。
+  - TSV に値がある場合、インポータは該当アノテーションページに保存します。
+  - TSV が空の場合、インポータはサブシステムのパターンから生成して保存します。
+  - すでにアノテーションページに値が保存されている場合は上書きしません（不一致は warning として記録します）。
 - `labelname`\*: ラベル名。各ポリゴンに入力した "1-1" 等のテキストと一致させる必要があります。
 - `sign`\*: 文字記号あるいは文字コード。
 - `function`: 文字の機能（例: phonogram, logogram）。

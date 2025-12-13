@@ -72,7 +72,9 @@ class WdbTemplateGeneratorServiceTest extends KernelTestBase {
     $lines = array_filter(explode("\n", $tsv));
     // Header only when no SIs found.
     $this->assertCount(1, $lines);
-    $this->assertMatchesRegularExpression('/^source\s+page\s+labelname/', $lines[0]);
+    $this->assertMatchesRegularExpression('/^source\s+page\s+image_identifier\s+labelname/', $lines[0]);
+    $header = preg_split("/\t/", $lines[0]);
+    $this->assertSame(['source', 'page', 'image_identifier', 'labelname'], array_slice($header, 0, 4));
   }
 
   /**
@@ -87,6 +89,7 @@ class WdbTemplateGeneratorServiceTest extends KernelTestBase {
     $page = $this->createEntity('wdb_annotation_page', [
       'source_ref' => $source->id(),
       'page_number' => 1,
+      'image_identifier' => 'img/0001.tif',
     ]);
 
     $sign = $this->createEntity('wdb_sign', ['sign_code' => 'X']);
@@ -131,8 +134,8 @@ class WdbTemplateGeneratorServiceTest extends KernelTestBase {
     $tsv = $this->service->generateTemplateFromSource($source);
     $lines = array_values(array_filter(explode("\n", $tsv)));
     $this->assertGreaterThanOrEqual(2, count($lines));
-    $this->assertMatchesRegularExpression('/^source\s+page\s+labelname/', $lines[0]);
-    $this->assertStringContainsString("src_tmpl\t1\tL-1", $lines[1]);
+    $this->assertMatchesRegularExpression('/^source\s+page\s+image_identifier\s+labelname/', $lines[0]);
+    $this->assertStringContainsString("src_tmpl\t1\timg/0001.tif\tL-1", $lines[1]);
   }
 
   /**
@@ -155,9 +158,9 @@ class WdbTemplateGeneratorServiceTest extends KernelTestBase {
 
     $lines = array_values(array_filter(explode("\n", $tsv)));
     $this->assertGreaterThanOrEqual(2, count($lines));
-    $this->assertMatchesRegularExpression('/^source\s+page\s+labelname/', $lines[0]);
+    $this->assertMatchesRegularExpression('/^source\s+page\s+image_identifier\s+labelname/', $lines[0]);
     // Row 1 for first character.
-    $this->assertStringContainsString("srcid\t\t\tお", $lines[1]);
+    $this->assertStringContainsString("srcid\t\t\t\tお", $lines[1]);
   }
 
   /**

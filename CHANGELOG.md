@@ -2,6 +2,17 @@
 
 All notable changes to this module will be documented in this file.
 
+## [1.5.12] - 2025-12-14
+### Changed
+- TSV import now persists `wdb_annotation_page.image_identifier`: it prefers the TSV value when present, otherwise attempts to generate and save it from the subsystem IIIF identifier pattern. Existing values are never overwritten (mismatches emit a warning).
+- Template TSV generation now includes `image_identifier` (placed after `page`) and outputs stored values only, avoiding any dependency on subsystem settings.
+- README and the import form help text updated to document the optional `image_identifier` column and its column order.
+
+### 変更 (日本語)
+- TSV 取込で `wdb_annotation_page.image_identifier` を永続化するように変更しました。TSV に値があればそれを優先し、無い場合はサブシステムの IIIF Identifier Pattern から生成できる場合に生成して保存します。既存値は上書きせず、不一致は warning として通知します。
+- テンプレ TSV 生成に `image_identifier` 列を追加しました（`page` の次）。テンプレ生成は保存済み値のみを出力し、サブシステム設定への依存を避けています。
+- README と取込フォームの説明文を更新し、任意列 `image_identifier` と列順を明記しました。
+
 ## [1.5.11] - 2025-12-13
 ### Fixed
 - `WdbProtectedDeleteForm` now also sends the “referenced content” error message to Drupal Messenger, guaranteeing that administrators see why a delete action was blocked even when the confirm element is hidden by the theme.

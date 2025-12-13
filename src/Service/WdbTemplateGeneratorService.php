@@ -78,7 +78,7 @@ class WdbTemplateGeneratorService {
    */
   public function generateTemplateFromSource(WdbSource $source): string {
     $header = [
-      'source', 'page', 'labelname',
+      'source', 'page', 'image_identifier', 'labelname',
       'sign', 'function', 'phone', 'note',
       'word_unit', 'basic_form', 'realized_form',
       'word_sequence',
@@ -134,7 +134,7 @@ class WdbTemplateGeneratorService {
   public function generateTemplateFromMecab(string $source_file_path, string $source_identifier, array &$context): string {
     $output_data = [];
     $header = [
-      'source', 'page', 'labelname',
+      'source', 'page', 'image_identifier', 'labelname',
       'sign', 'function', 'phone', 'note',
       'word_unit', 'basic_form', 'realized_form',
       'word_sequence',
@@ -200,6 +200,7 @@ class WdbTemplateGeneratorService {
         $row = [
           'source' => $source_identifier,
           'page' => '',
+          'image_identifier' => '',
           'labelname' => '',
           'sign' => $char,
           'function' => '',
@@ -264,6 +265,9 @@ class WdbTemplateGeneratorService {
 
     $row['source'] = $source ? $source->get('source_identifier')->value : '';
     $row['page'] = $page ? $page->get('page_number')->value : '';
+    // Use only the stored value here. Do not call getImageIdentifier(),
+    // because template generation should not depend on subsystem patterns.
+    $row['image_identifier'] = $page ? (string) ($page->get('image_identifier')->value ?? '') : '';
     $row['labelname'] = $label ? $label->label() : '';
     $row['sign'] = $sign ? $sign->label() : '';
     $row['function'] = $sign_function ? $sign_function->get('function_name')->value : '';
@@ -297,7 +301,7 @@ class WdbTemplateGeneratorService {
     }
 
     $header_keys = [
-      'source', 'page', 'labelname', 'sign', 'function',
+      'source', 'page', 'image_identifier', 'labelname', 'sign', 'function',
       'phone', 'note', 'word_unit', 'basic_form', 'realized_form',
       'word_sequence',
       'lexical_category_name',

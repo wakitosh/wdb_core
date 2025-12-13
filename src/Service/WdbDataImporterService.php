@@ -64,6 +64,7 @@ class WdbDataImporterService {
     $source_identifier = trim($rowData['source'] ?? '');
     $page_num = (int) trim($rowData['page'] ?? 0);
     $label_name = trim($rowData['labelname'] ?? '');
+    $image_identifier_from_tsv = trim($rowData['image_identifier'] ?? '');
     $sign_code = trim($rowData['sign'] ?? '');
     $function_name = trim($rowData['function'] ?? '');
     $phone = trim($rowData['phone'] ?? '');
@@ -114,6 +115,19 @@ class WdbDataImporterService {
       if (!$wdb_annotation_page_entity) {
         throw new \Exception('Annotation Page entity not found for page ' . $page_num);
       }
+
+      // Persist IIIF image identifier when possible:
+      // 1) TSV-provided value (best for per-page exceptions)
+      // 2) Generated from subsystem pattern (when configured)
+      // Never overwrite an existing stored value.
+      $this->ensureAnnotationPageImageIdentifier(
+        $wdb_annotation_page_entity,
+        $image_identifier_from_tsv,
+        $source_identifier,
+        $page_num,
+        $row_num,
+        $context
+      );
 
       $wdb_label_entity = NULL;
       if (!empty($label_name)) {
@@ -414,6 +428,66 @@ class WdbDataImporterService {
       throw new \RuntimeException('Unexpected entity type (WdbAnnotationPage) after creation.');
     }
     return $entity;
+  }
+
+  /**
+   * Ensures the annotation page has an image_identifier persisted.
+   *
+   * Priority:
+   * 1) TSV value (if provided)
+   * 2) Generated value from subsystem pattern (if available)
+   *
+   * Existing non-empty values are never overwritten.
+   */
+  private function ensureAnnotationPageImageIdentifier(WdbAnnotationPage $page, string $tsv_identifier, string $source_identifier, int $page_num, int $row_num, array &$context): void {
+    $base_page = $page->getUntranslated();
+    if (!$base_page->hasField('image_identifier')) {
+      return;
+    }
+
+    $current = trim((string) ($base_page->get('image_identifier')->value ?? ''));
+    if ($current !== '') {
+      // If TSV provides a different value, warn but do not overwrite.
+      if (trim($tsv_identifier) !== '' && trim($tsv_identifier) !== $current) {
+        $context['results']['warnings'][] = $this->t(
+              'Row @row_num: Page @source/@page already has IIIF image identifier "@current"; TSV provided "@tsv". Keeping existing value.',
+              [
+                '@row_num' => $row_num,
+                '@source' => $source_identifier,
+                '@page' => $page_num,
+                '@current' => $current,
+                '@tsv' => trim($tsv_identifier),
+              ]
+          );
+      }
+      return;
+    }
+
+    $tsv_identifier = trim($tsv_identifier);
+    if ($tsv_identifier !== '') {
+      $base_page->set('image_identifier', $tsv_identifier);
+      $base_page->save();
+      return;
+    }
+
+    // No TSV value: try to generate from the subsystem pattern.
+    $generated = $base_page->getImageIdentifier(TRUE);
+    $generated = is_string($generated) ? trim($generated) : '';
+    if ($generated !== '') {
+      $base_page->set('image_identifier', $generated);
+      $base_page->save();
+      return;
+    }
+
+    // Still unknown: warn so operators can fix via settings or manual edit.
+    $context['results']['warnings'][] = $this->t(
+          'Row @row_num: Page @source/@page is missing an IIIF image identifier and none could be generated. Set a subsystem pattern or provide image_identifier in TSV / page edit.',
+          [
+            '@row_num' => $row_num,
+            '@source' => $source_identifier,
+            '@page' => $page_num,
+          ]
+      );
   }
 
   /**

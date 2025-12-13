@@ -88,7 +88,7 @@ class WdbDataImportForm extends FormBase implements ContainerInjectionInterface 
    */
   public function buildForm(array $form, FormStateInterface $form_state) {
     $form['description'] = [
-      '#markup' => $this->t('Upload a TSV or CSV file containing linguistic annotation data. The file must be sorted by "word_unit" to ensure correct sign sequence generation.'),
+      '#markup' => $this->t('Upload a TSV or CSV file containing linguistic annotation data. The file must be sorted by "word_unit" to ensure correct sign sequence generation. The optional "image_identifier" column can be used to explicitly set per-page IIIF image identifiers.'),
     ];
 
     $language_options = [];
