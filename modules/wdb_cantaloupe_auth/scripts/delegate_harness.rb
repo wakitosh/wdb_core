@@ -13,7 +13,7 @@
 require 'net/http'
 require 'uri'
 require 'json'
-require_relative 'delegate'
+require_relative 'delegates'
 require 'optparse'
 
 DRUPAL_AUTH_ENDPOINT = ENV['DRUPAL_AUTH_ENDPOINT'] || nil
@@ -37,7 +37,7 @@ if DRUPAL_AUTH_ENDPOINT.nil? || DRUPAL_AUTH_ENDPOINT.empty?
   exit 2
 end
 
-# Emulate Cantaloupe's context accessor.
+# Emulate Cantaloupe's context hash.
 $context = {
   'identifier' => opts['identifier'],
   'client_ip' => opts['client_ip'],
@@ -57,12 +57,13 @@ opts['cookies'].split(/;\s*/).each do |pair|
   $context['cookies'][k] = v
 end
 
-def context
-  $context
+delegate = CustomDelegate.new
+delegate.context = $context
+
+ok = if delegate.respond_to?(:authorize)
+  delegate.authorize
+else
+  delegate.pre_authorize
 end
-
-  # Token extraction and pre_authorize are provided by delegates.rb
-
-ok = pre_authorize
 puts({ authorized: ok }.to_json)
 exit(ok ? 0 : 1)
