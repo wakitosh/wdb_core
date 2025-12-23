@@ -2,6 +2,15 @@
 
 All notable changes to this module will be documented in this file.
 
+## [1.5.13] - 2025-12-23
+### Fixed
+- Cantaloupe delegate: added an `authorize()` entrypoint (aliasing to `pre_authorize()`) to stay compatible with installations that invoke `authorize`, preventing 500 errors.
+- Viewer (gallery): replaced `scrollIntoView()` in the annotation-panel update flow with a scroll confined to the full-text container, preventing the panel toolbar from being scrolled out of view.
+
+### 修正 (日本語)
+- Cantaloupe delegate: `authorize()` が呼ばれる環境でも動作するよう、`authorize()` エントリポイントを追加（`pre_authorize()` へ委譲）し、500 エラーを防止しました。
+- ビューア（ギャラリー）: アノテーションパネル更新時の `scrollIntoView()` によりツールバーがスクロールアウトすることがあるため、フルテキスト欄のスクロールだけを行う実装に変更しました。
+
 ## [1.5.12] - 2025-12-14
 ### Changed
 - TSV import now persists `wdb_annotation_page.image_identifier`: it prefers the TSV value when present, otherwise attempts to generate and save it from the subsystem IIIF identifier pattern. Existing values are never overwritten (mismatches emit a warning).

@@ -932,11 +932,22 @@
                   // Scroll the highlighted word into view if it's not visible.
                   const container = fullTextPanel[0];
                   const element = wordToHighlight[0];
-                  if (!element.scrollIntoView) return;
+                  if (!container || !element || !container.getBoundingClientRect || !element.getBoundingClientRect) return;
                   const containerRect = container.getBoundingClientRect();
                   const elementRect = element.getBoundingClientRect();
                   if (elementRect.top < containerRect.top || elementRect.bottom > containerRect.bottom) {
-                    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    // Avoid element.scrollIntoView(): it may scroll outer ancestors (panel/page)
+                    // in some browsers, which can hide the panel toolbar. Scroll only the
+                    // full-text container instead.
+                    const currentTop = container.scrollTop || 0;
+                    const deltaTop = elementRect.top - containerRect.top;
+                    const targetTop = currentTop + deltaTop - (container.clientHeight / 2) + (elementRect.height / 2);
+                    const clampedTop = Math.max(0, targetTop);
+                    if (typeof container.scrollTo === 'function') {
+                      container.scrollTo({ top: clampedTop, behavior: 'smooth' });
+                    } else {
+                      container.scrollTop = clampedTop;
+                    }
                   }
                 }
               }
