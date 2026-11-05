@@ -20,6 +20,8 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  * Controller for displaying the image gallery with an OpenSeadragon viewer.
  */
 class GalleryController extends ControllerBase implements ContainerInjectionInterface {
+
+  use WdbResourceAccessTrait;
   use StringTranslationTrait;
 
 
@@ -123,6 +125,7 @@ class GalleryController extends ControllerBase implements ContainerInjectionInte
    *   A render array for the gallery page.
    */
   public function viewPage(string $subsysname, string $source, int $page = 1): array {
+    $this->resourceAccess()->loadReadablePage($subsysname, $source, $page);
     // 1. Load the required entities.
     /** @var \Drupal\wdb_core\Entity\WdbSource $wdb_source_entity */
     $wdb_source_entity = $this->loadWdbSource($source, $subsysname);
@@ -292,6 +295,7 @@ class GalleryController extends ControllerBase implements ContainerInjectionInte
     $build['#attached']['library'][] = 'wdb_core/wdb_page_layout';
     $build['#attached']['library'][] = 'wdb_core/wdb_annotation_panel';
     $build['#attached']['drupalSettings']['wdb_core']['openseadragon'] = $osd_settings;
+    $build['#cache'] = ['contexts' => ['user'], 'max-age' => 0];
 
     $build['main_container'] = [
       '#type' => 'container',
@@ -394,9 +398,12 @@ class GalleryController extends ControllerBase implements ContainerInjectionInte
       // If the source is not found, throw a 404 error.
       throw new NotFoundHttpException();
     }
+    $this->resourceAccess()->assertViewAccess($wdb_source_entity, $subsysname);
     // Use entity view builder for 'full' mode (respects display settings).
     $view_builder = $this->entityTypeManager()->getViewBuilder('wdb_source');
     $build = $view_builder->view($wdb_source_entity, 'full');
+    $build['#cache']['contexts'][] = 'user';
+    $build['#cache']['max-age'] = 0;
 
     return $build;
   }

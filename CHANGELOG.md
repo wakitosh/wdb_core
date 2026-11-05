@@ -2,6 +2,30 @@
 
 All notable changes to this module will be documented in this file.
 
+## [1.5.16] - 2026-11-06
+
+### Security
+- Removed Cantaloupe authorization bypasses based on `info.json` URL suffixes, query-string matches, and loopback client addresses. Explicit public-directory exceptions now match validated image identifier segments only.
+- Added shared source-based authorization to annotation reads, full text, exports, dialogs, source pages, search results, and autocomplete. Requests cannot substitute another subsystem to access a restricted source.
+- Required both operation permissions and subsystem authorization when creating, updating, or deleting annotations and opening the editor.
+- Required session CSRF headers for all annotation mutations and updated the editor to obtain and send the session token. Rejected non-JSON and malformed polygon payloads.
+- Denied access when a configured Drupal Group or membership loader is unavailable; restricted subsystems now always require login. Membership decisions and pages containing signed tokens are not shared through render caches.
+
+### Changed
+- Bounded search page sizes to 1–200 results and applied source visibility before counting and pagination.
+- Documented delegate replacement, cache rebuilds, and private IIIF cache settings. Existing Cantaloupe deployments must replace their delegate and rebuild Drupal caches after updating.
+
+### セキュリティ (日本語)
+- Cantaloupe の URL 末尾・クエリ文字列・localhost による認証回避を修正しました。公開例外は検証済みの画像識別子のパス要素で判定します。
+- アノテーション・本文・エクスポート・詳細パネル・資料ページ・検索・補完に、実際の資料に基づく共通の認可処理を追加しました。別サブシステム名の指定による制限回避も拒否します。
+- アノテーションの作成・更新・削除と編集画面で、操作権限とサブシステムの認可を必須にしました。
+- 更新 API に CSRF ヘッダーを必須化し、編集画面もセッショントークンの取得・送信に対応しました。JSON 以外の本文と不正なポリゴン座標を拒否します。
+- 設定済み Group やメンバー判定機能が利用できない場合はアクセスを拒否します。制限付きサブシステムはログイン必須とし、メンバー判定や署名付きトークンを含む画面のキャッシュ共有を防ぎます。
+
+### 変更 (日本語)
+- 検索件数を 1～200 件に制限し、総件数・ページングの前に資料の閲覧制限を適用します。
+- 更新手順と非公開 IIIF 画像のキャッシュ設定を記載しました。更新後は配備済み delegate の差し替えと Drupal キャッシュの再構築が必要です。
+
 ## [1.5.15] - 2026-08-08
 ### Fixed
 - Cantaloupe delegate sample: defined every method Cantaloupe 5.x invokes on `CustomDelegate` (`metadata`, `redactions`, `overlay`, `source`, the `*source_*` lookups, and the meta-identifier serializers), carrying over their upstream documentation comments. Previously only `pre_authorize`/`authorize` were defined, so a missing `metadata` raised `NoMethodError` inside JRuby and Cantaloupe returned HTTP 500 for **every** `info.json` request while tiles kept rendering normally.

@@ -1,4 +1,8 @@
 services:
+  wdb_core.resource_access:
+    class: Drupal\wdb_core\Access\WdbResourceAccess
+    arguments: ['@wdb_core.subsystem_access_policy', '@current_user', '@entity_type.manager']
+
   wdb_core.data_service:
     class: Drupal\wdb_core\Service\WdbDataService
     arguments:

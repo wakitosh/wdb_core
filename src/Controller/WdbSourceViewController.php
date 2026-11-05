@@ -14,6 +14,8 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  */
 class WdbSourceViewController extends ControllerBase implements ContainerInjectionInterface {
 
+  use WdbResourceAccessTrait;
+
   /**
    * Constructs a new WdbSourceViewController object.
    *
@@ -61,8 +63,14 @@ class WdbSourceViewController extends ControllerBase implements ContainerInjecti
     if (!$wdb_source) {
       throw new NotFoundHttpException();
     }
+    $this->resourceAccess()->assertViewAccess($wdb_source);
     $view_builder = $this->entityTypeManager()->getViewBuilder('wdb_source');
-    return $view_builder->view($wdb_source, 'full');
+    $build = $view_builder->view($wdb_source, 'full');
+    // This route's controller performs resource authorization; do not let a
+    // response cached for another user skip the controller on a later request.
+    $build['#cache']['contexts'][] = 'user';
+    $build['#cache']['max-age'] = 0;
+    return $build;
   }
 
   /**
@@ -77,6 +85,7 @@ class WdbSourceViewController extends ControllerBase implements ContainerInjecti
   public function getTitle(string $source_identifier) {
     $wdb_source = $this->loadSourceByIdentifier($source_identifier);
     if ($wdb_source) {
+      $this->resourceAccess()->assertViewAccess($wdb_source);
       return $wdb_source->label();
     }
     return $this->t('Source');

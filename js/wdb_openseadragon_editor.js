@@ -6,6 +6,28 @@
 (function ($, Drupal, OpenSeadragon, AnnotoriousOSD, drupalSettings, once) {
   'use strict';
 
+  let csrfTokenPromise = null;
+
+  // Fetch the session token once and use it for every annotation mutation.
+  function annotationRequest(url, options) {
+    if (!csrfTokenPromise) {
+      csrfTokenPromise = fetch(Drupal.url('session/token'), { credentials: 'same-origin', cache: 'no-store' })
+        .then(response => {
+          if (!response.ok) throw new Error('Could not obtain CSRF token.');
+          return response.text();
+        })
+        .catch(error => {
+          csrfTokenPromise = null;
+          throw error;
+        });
+    }
+    return csrfTokenPromise.then(token => fetch(url, {
+      ...options,
+      credentials: 'same-origin',
+      headers: { ...options.headers, 'X-CSRF-Token': token },
+    }));
+  }
+
   function createIiifTokenHelper(authConfig) {
     const config = authConfig || {};
     let token = (typeof config.token === 'string' && config.token.length) ? config.token : null;
@@ -768,7 +790,7 @@
             //            const apiUrl = osdSettings.annotationEndpoint.url + endpoint;
             const apiUrl = isNew ? osdSettings.annotationEndpoint.create : osdSettings.annotationEndpoint.update;
 
-            fetch(apiUrl, {
+            annotationRequest(apiUrl, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(annotation),
@@ -797,7 +819,7 @@
               return;
             }
             const deleteUrl = `${osdSettings.annotationEndpoint.destroy}?uri=${encodeURIComponent(annotation.id)}`;
-            fetch(deleteUrl, { method: 'DELETE' })
+            annotationRequest(deleteUrl, { method: 'DELETE' })
               .then(response => {
                 if (!response.ok) {
                   throw new Error(response.statusText);

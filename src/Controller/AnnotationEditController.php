@@ -23,6 +23,8 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  * creating, updating, and deleting annotations on a specific image canvas.
  */
 class AnnotationEditController extends ControllerBase implements ContainerInjectionInterface {
+
+  use WdbResourceAccessTrait;
   use StringTranslationTrait;
 
   /**
@@ -86,6 +88,7 @@ class AnnotationEditController extends ControllerBase implements ContainerInject
   public function getPageTitle(string $subsysname, string $source, int $page): string {
     $wdb_source_entity = $this->loadWdbSource($source, $subsysname);
     if ($wdb_source_entity) {
+      $this->resourceAccess()->assertOperationAccess($wdb_source_entity, 'access wdb annotation edit page', $subsysname);
       return $this->t('Edit Annotations: @source_label - Page @page', [
         '@source_label' => $wdb_source_entity->label(),
         '@page' => $page,
@@ -114,6 +117,8 @@ class AnnotationEditController extends ControllerBase implements ContainerInject
     if (!$wdb_source_entity) {
       throw new NotFoundHttpException();
     }
+
+    $this->resourceAccess()->assertOperationAccess($wdb_source_entity, 'access wdb annotation edit page', $subsysname);
 
     $wdb_annotation_page_entity = $this->loadWdbAnnotationPage($wdb_source_entity, $page);
     if (!$wdb_annotation_page_entity) {
@@ -253,6 +258,7 @@ class AnnotationEditController extends ControllerBase implements ContainerInject
     $build['#attached']['library'][] = 'wdb_core/wdb_editor';
     $build['#attached']['library'][] = 'wdb_core/wdb_page_layout';
     $build['#attached']['drupalSettings']['wdb_core']['openseadragon'] = $osd_settings;
+    $build['#cache'] = ['contexts' => ['user'], 'max-age' => 0];
 
     $build['main_container'] = [
       '#type' => 'container',

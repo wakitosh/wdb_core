@@ -22,6 +22,8 @@ use Symfony\Component\HttpFoundation\Request;
  */
 class SearchApiController extends ControllerBase implements ContainerInjectionInterface {
 
+  use WdbResourceAccessTrait;
+
   /**
    * The HullPHP calculation service.
    *
@@ -79,6 +81,12 @@ class SearchApiController extends ControllerBase implements ContainerInjectionIn
   public function search(Request $request): JsonResponse {
     $wu_storage = $this->entityTypeManager->getStorage('wdb_word_unit');
     $query = $wu_storage->getQuery();
+    $readable_subsystems = $this->resourceAccess()->readableSubsystemIds();
+    if (!$readable_subsystems) {
+      return new JsonResponse(['results' => [], 'total' => 0]);
+    }
+    // Apply authorization before counting or paging, including empty searches.
+    $query->condition('source_ref.entity.subsystem_tags', $readable_subsystems, 'IN');
     $valid_operators = ['CONTAINS', 'STARTS_WITH', 'ENDS_WITH'];
 
     // --- Build search conditions ---
@@ -91,6 +99,7 @@ class SearchApiController extends ControllerBase implements ContainerInjectionIn
     }
     if ($value = $request->query->get('basic_form')) {
       $op = $request->query->get('basic_form_op', 'CONTAINS');
+      $op = in_array($op, $valid_operators, TRUE) ? $op : 'CONTAINS';
       $word_ids = $this->entityTypeManager->getStorage('wdb_word')->getQuery()->condition('basic_form', $value, $op)->accessCheck(FALSE)->execute();
       if (!empty($word_ids)) {
         $meaning_ids = $this->entityTypeManager->getStorage('wdb_word_meaning')->getQuery()->condition('word_ref', $word_ids, 'IN')->accessCheck(FALSE)->execute();
@@ -107,6 +116,7 @@ class SearchApiController extends ControllerBase implements ContainerInjectionIn
     }
     if ($value = $request->query->get('sign')) {
       $op = $request->query->get('sign_op', 'CONTAINS');
+      $op = in_array($op, $valid_operators, TRUE) ? $op : 'CONTAINS';
       $sign_ids = $this->entityTypeManager->getStorage('wdb_sign')->getQuery()->condition('sign_code', $value, $op)->accessCheck(FALSE)->execute();
       if (!empty($sign_ids)) {
         $sf_ids = $this->entityTypeManager->getStorage('wdb_sign_function')->getQuery()
@@ -191,7 +201,7 @@ class SearchApiController extends ControllerBase implements ContainerInjectionIn
 
     // Apply paging and sorting.
     $page = max(0, (int) $request->query->get('page', 0));
-    $limit = (int) $request->query->get('limit', 50);
+    $limit = max(1, min(200, (int) $request->query->get('limit', 50)));
 
     // Set sort order to Source > Word Sequence.
     $query->sort('source_ref', 'ASC');
@@ -210,6 +220,9 @@ class SearchApiController extends ControllerBase implements ContainerInjectionIn
         /** @var \Drupal\wdb_core\Entity\WdbWordUnit $wu */
         /** @var \Drupal\Core\Entity\FieldableEntityInterface|null $source */
         $source = $wu->get('source_ref')->entity;
+        if (!$this->resourceAccess()->checkAccess($wu)->isAllowed()) {
+          continue;
+        }
         /** @var \Drupal\Core\Field\EntityReferenceFieldItemListInterface|null $annotation_pages */
         $annotation_pages = $wu->get('annotation_page_refs');
         /** @var \Drupal\Core\Entity\FieldableEntityInterface|null $page_entity */

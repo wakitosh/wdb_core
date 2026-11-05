@@ -19,6 +19,8 @@ use Symfony\Component\HttpFoundation\JsonResponse;
  */
 class ExportController extends ControllerBase implements ContainerInjectionInterface {
 
+  use WdbResourceAccessTrait;
+
   /**
    * The WDB data service.
    *
@@ -96,6 +98,7 @@ class ExportController extends ControllerBase implements ContainerInjectionInter
    *   A response object containing the XML file.
    */
   public function downloadTei(string $subsysname, string $source, int $page): Response {
+    $this->resourceAccess()->loadReadablePage($subsysname, $source, $page);
     $page_data = $this->wdbDataService->getDataForExport($subsysname, $source, $page);
 
     $subsystem_config = $this->wdbDataService->getSubsystemConfig($subsysname);
@@ -132,6 +135,7 @@ class ExportController extends ControllerBase implements ContainerInjectionInter
    *   A response object containing the RDF file.
    */
   public function downloadRdf(string $subsysname, string $source, int $page): Response {
+    $this->resourceAccess()->loadReadablePage($subsysname, $source, $page);
     $page_data = $this->wdbDataService->getDataForExport($subsysname, $source, $page);
 
     $subsystem_config = $this->wdbDataService->getSubsystemConfig($subsysname);
@@ -168,6 +172,7 @@ class ExportController extends ControllerBase implements ContainerInjectionInter
    *   A response object containing the text file.
    */
   public function downloadText(string $subsysname, string $source, int $page): Response {
+    $this->resourceAccess()->loadReadablePage($subsysname, $source, $page);
     $text_data = $this->textGenerator->getFullText($subsysname, $source, $page);
     $plain_text = strip_tags($text_data['html'] ?? 'No text available.');
 
@@ -290,6 +295,7 @@ class ExportController extends ControllerBase implements ContainerInjectionInter
       return new JsonResponse(['error' => 'Word Unit not found.'], 404);
     }
     $wu_entity = reset($wu_entities);
+    $this->resourceAccess()->assertViewAccess($wu_entity);
 
     // 2. Find the first sign of that word unit (minimum sign_sequence).
     $map_storage = $this->entityTypeManager->getStorage('wdb_word_map');

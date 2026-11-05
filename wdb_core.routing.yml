@@ -159,6 +159,7 @@ wdb_core.annotation_create:
   methods: [POST]
   requirements:
     _permission: 'access wdb annotation api create'
+    _csrf_request_header_token: 'TRUE'
 
 # Update annotation.
 wdb_core.annotation_update:
@@ -168,6 +169,7 @@ wdb_core.annotation_update:
   methods: [POST, PUT]
   requirements:
     _permission: 'access wdb annotation api update'
+    _csrf_request_header_token: 'TRUE'
 
 # Delete annotation.
 wdb_core.annotation_delete:
@@ -177,6 +179,7 @@ wdb_core.annotation_delete:
   methods: [DELETE]
   requirements:
     _permission: 'access wdb annotation api delete'
+    _csrf_request_header_token: 'TRUE'
 
 # Autocomplete endpoint for realized_form.
 wdb_core.autocomplete.realized_form:

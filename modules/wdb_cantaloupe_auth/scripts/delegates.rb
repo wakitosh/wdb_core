@@ -292,21 +292,13 @@ class CustomDelegate
   def pre_authorize(options = {})
     begin
       request_uri_str = (context && context['request_uri']).to_s
-
-      # Public directories bypass authorization entirely. Both the decoded and
-      # the URL-encoded form of the separator are checked, because Cantaloupe
-      # may see either depending on the proxy's AllowEncodedSlashes setting.
-      SKIP_AUTH_DIRECTORIES.each do |dir|
-        if request_uri_str.include?("/#{dir}/") || request_uri_str.include?("#{dir}%2F")
-          return true
-        end
+      # Cantaloupe supplies the decoded identifier of the actual resource.
+      # Never use request_uri (which includes attacker-controlled query data)
+      # or client_ip to bypass authorization, including for info.json.
+      identifier_segments = (context && context['identifier']).to_s.split('/')
+      unless identifier_segments.empty? || identifier_segments.any? { |part| part.empty? || part == '.' || part == '..' || part.include?('%') || part.include?('\\') }
+        return true if identifier_segments.any? { |part| SKIP_AUTH_DIRECTORIES.include?(part) }
       end
-
-      # Allow info.json unconditionally.
-      return true if request_uri_str.end_with?('info.json')
-
-      # Allow requests from the server itself (e.g., for derivative generation).
-      return true if (context && context['client_ip']).to_s.start_with?('127.0.0.1')
 
       token = resolve_token_from_context
 

@@ -56,7 +56,7 @@ end
 opts = {
   'identifier' => nil,
   'cookies' => '',
-  'client_ip' => '127.0.0.1',
+  'client_ip' => '203.0.113.9',
   'request_uri' => '/iiif/3/info.json',
   'check_methods_only' => false
 }
@@ -64,7 +64,7 @@ opts = {
 OptionParser.new do |o|
   o.on('--identifier ID', 'IIIF identifier, e.g., wdb/hdb/foo/1.ptif') { |v| opts['identifier'] = v }
   o.on('--cookies STR', 'Cookie header string, e.g., "SSESS...=...; _ga=..."') { |v| opts['cookies'] = v }
-  o.on('--client-ip IP', 'Client IP (default 127.0.0.1)') { |v| opts['client_ip'] = v }
+  o.on('--client-ip IP', 'Client IP (default 203.0.113.9)') { |v| opts['client_ip'] = v }
   o.on('--request-uri URI', 'Request URI (default /iiif/3/info.json)') { |v| opts['request_uri'] = v }
   o.on('--check-methods', 'Only verify that all delegate methods are defined, then exit') { opts['check_methods_only'] = true }
 end.parse!

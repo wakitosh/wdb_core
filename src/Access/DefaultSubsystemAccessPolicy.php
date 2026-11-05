@@ -45,18 +45,23 @@ class DefaultSubsystemAccessPolicy implements SubsystemAccessPolicyInterface {
       return AccessResult::allowed()->addCacheableDependency($config);
     }
 
+    if ($account->isAnonymous()) {
+      return AccessResult::forbidden('Login required for restricted subsystem.')
+        ->addCacheableDependency($config)->cachePerUser();
+    }
+
     $group = $this->loadSubsystemGroup($subsystem, $config);
-    if ($group && $this->membershipLoader) {
-      if ($account->isAnonymous()) {
-        return AccessResult::forbidden('Login required for restricted subsystem.')
-          ->addCacheableDependency($config)
-          ->addCacheableDependency($group);
+    if ($config->get('group_uuid')) {
+      // A configured restriction must never silently disappear.
+      if (!$group || !$this->membershipLoader) {
+        return AccessResult::forbidden('Configured subsystem group is unavailable.')
+          ->addCacheableDependency($config)->cachePerUser()->setCacheMaxAge(0);
       }
       $membership = $this->membershipLoader->load($group, $account);
       if (!$membership) {
         return AccessResult::forbidden('User is not a member of the subsystem group.')
           ->addCacheableDependency($config)
-          ->addCacheableDependency($group);
+          ->addCacheableDependency($group)->cachePerUser()->setCacheMaxAge(0);
       }
     }
 
@@ -64,7 +69,8 @@ class DefaultSubsystemAccessPolicy implements SubsystemAccessPolicyInterface {
     $result = AccessResult::allowedIfHasPermission($account, $permission)
       ->addCacheableDependency($config);
     if ($group) {
-      $result->addCacheableDependency($group);
+      // Membership can change without saving the group entity itself.
+      $result->addCacheableDependency($group)->cachePerUser()->setCacheMaxAge(0);
     }
     return $result;
   }

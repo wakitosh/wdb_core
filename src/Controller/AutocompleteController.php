@@ -18,6 +18,8 @@ use Symfony\Component\HttpFoundation\Request;
  */
 class AutocompleteController extends ControllerBase implements ContainerInjectionInterface {
 
+  use WdbResourceAccessTrait;
+
   /**
    * Constructs a new AutocompleteController object.
    *
@@ -46,7 +48,7 @@ class AutocompleteController extends ControllerBase implements ContainerInjectio
    */
   public function handleAutocomplete(Request $request): JsonResponse {
     $matches = [];
-    $q = $request->query->get('q');
+    $q = (string) $request->query->get('q', '');
     $route_name = $request->attributes->get('_route');
 
     if (strlen($q) > 0) {
@@ -66,6 +68,20 @@ class AutocompleteController extends ControllerBase implements ContainerInjectio
 
       // Build and execute the entity query.
       $query = $this->entityTypeManager->getStorage($target_entity_type)->getQuery();
+      $subsystems = $this->resourceAccess()->readableSubsystemIds();
+      if (!$subsystems) {
+        return new JsonResponse([]);
+      }
+      if ($target_entity_type === 'wdb_word_unit') {
+        $query->condition('source_ref.entity.subsystem_tags', $subsystems, 'IN');
+      }
+      else {
+        $ids = $this->readableDictionaryIds($target_entity_type, $subsystems);
+        if (!$ids) {
+          return new JsonResponse([]);
+        }
+        $query->condition('id', $ids, 'IN');
+      }
       $query->condition($target_field, $q, 'CONTAINS');
       // Removed unsupported groupBy; fetch more rows and deduplicate manually.
       $query->range(0, 50);
@@ -89,6 +105,44 @@ class AutocompleteController extends ControllerBase implements ContainerInjectio
       }
     }
     return new JsonResponse($matches);
+  }
+
+  /**
+   * Limits dictionary suggestions to entries used by readable sources.
+   */
+  private function readableDictionaryIds(string $type, array $subsystems): array {
+    $ids = [];
+    if ($type === 'wdb_word') {
+      $storage = $this->entityTypeManager->getStorage('wdb_word_unit');
+      $unit_ids = $storage->getQuery()->condition('source_ref.entity.subsystem_tags', $subsystems, 'IN')->accessCheck(FALSE)->execute();
+      $meaning_ids = [];
+      foreach ($storage->loadMultiple($unit_ids) as $unit) {
+        if ($id = $unit->get('word_meaning_ref')->target_id) {
+          $meaning_ids[$id] = $id;
+        }
+      }
+      foreach ($this->entityTypeManager->getStorage('wdb_word_meaning')->loadMultiple($meaning_ids) as $meaning) {
+        if ($id = $meaning->get('word_ref')->target_id) {
+          $ids[$id] = $id;
+        }
+      }
+    }
+    else {
+      $storage = $this->entityTypeManager->getStorage('wdb_sign_interpretation');
+      $interpretation_ids = $storage->getQuery()->condition('annotation_page_ref.entity.source_ref.entity.subsystem_tags', $subsystems, 'IN')->accessCheck(FALSE)->execute();
+      $function_ids = [];
+      foreach ($storage->loadMultiple($interpretation_ids) as $interpretation) {
+        if ($id = $interpretation->get('sign_function_ref')->target_id) {
+          $function_ids[$id] = $id;
+        }
+      }
+      foreach ($this->entityTypeManager->getStorage('wdb_sign_function')->loadMultiple($function_ids) as $function) {
+        if ($id = $function->get('sign_ref')->target_id) {
+          $ids[$id] = $id;
+        }
+      }
+    }
+    return array_values($ids);
   }
 
 }

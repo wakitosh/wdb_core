@@ -13,6 +13,8 @@ use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
  */
 class FullTextController extends ControllerBase implements ContainerInjectionInterface {
 
+  use WdbResourceAccessTrait;
+
   /**
    * The WDB text generator service.
    *
@@ -53,6 +55,7 @@ class FullTextController extends ControllerBase implements ContainerInjectionInt
    *   A JSON response containing the rendered HTML of the full text.
    */
   public function getFullTextContent(string $subsysname, string $source, int $page): JsonResponse {
+    $this->resourceAccess()->loadReadablePage($subsysname, $source, $page);
     $result = $this->textGenerator->getFullText($subsysname, $source, $page);
     return new JsonResponse($result);
   }

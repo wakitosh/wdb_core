@@ -20,6 +20,8 @@ use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
  */
 class DialogContentController extends ControllerBase implements ContainerInjectionInterface {
 
+  use WdbResourceAccessTrait;
+
   /**
    * The WDB data service.
    *
@@ -81,6 +83,7 @@ class DialogContentController extends ControllerBase implements ContainerInjecti
     if (!$wdb_label || !($wdb_label instanceof WdbLabel)) {
       return new JsonResponse(['error' => 'Annotation not found.'], 404);
     }
+    $this->resourceAccess()->assertViewAccess($wdb_label, $subsysname);
 
     // Pass the loaded entity object and the subsystem name to the service.
     $data = $this->wdbDataService->getAnnotationDetails($wdb_label, $subsysname);

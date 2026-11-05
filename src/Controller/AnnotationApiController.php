@@ -24,6 +24,8 @@ use Symfony\Component\HttpFoundation\RequestStack;
  */
 class AnnotationApiController extends ControllerBase implements ContainerInjectionInterface {
 
+  use WdbResourceAccessTrait;
+
   /**
    * The URL generator service.
    *
@@ -108,6 +110,7 @@ class AnnotationApiController extends ControllerBase implements ContainerInjecti
     if (!$wdb_annotation_page_entity) {
       return new JsonResponse(['error' => 'Annotation page not found.'], 404);
     }
+    $this->resourceAccess()->assertViewAccess($wdb_annotation_page_entity);
 
     $wdb_labels = $this->entityTypeManager->getStorage('wdb_label')->loadByProperties([
       'annotation_page_ref' => $wdb_annotation_page_entity->id(),
@@ -137,8 +140,11 @@ class AnnotationApiController extends ControllerBase implements ContainerInjecti
    *   A JSON response containing the newly created annotation.
    */
   public function createAnnotation(Request $request): JsonResponse {
+    if ($request->getContentTypeFormat() !== 'json') {
+      return new JsonResponse(['error' => 'Content-Type must be application/json.'], 415);
+    }
     $payload = json_decode($request->getContent(), TRUE);
-    if (json_last_error() !== JSON_ERROR_NONE) {
+    if (json_last_error() !== JSON_ERROR_NONE || !is_array($payload)) {
       return new JsonResponse(['error' => 'Invalid JSON payload.'], 400);
     }
 
@@ -148,7 +154,7 @@ class AnnotationApiController extends ControllerBase implements ContainerInjecti
     $canvas_uri = $payload['target']['source'] ?? NULL;
     $points = $payload['target']['selector']['geometry']['points'] ?? NULL;
 
-    if (empty($label_name) || empty($canvas_uri) || empty($points)) {
+    if (!is_string($label_name) || trim($label_name) === '' || !is_string($canvas_uri) || !$this->validPoints($points)) {
       return new JsonResponse(['error' => 'Missing required fields in payload.'], 400);
     }
 
@@ -156,6 +162,7 @@ class AnnotationApiController extends ControllerBase implements ContainerInjecti
     if (!$wdb_annotation_page) {
       return new JsonResponse(['error' => 'Annotation page not found.'], 404);
     }
+    $this->resourceAccess()->assertOperationAccess($wdb_annotation_page, 'access wdb annotation api create');
 
     try {
       $polygon_points_array = array_map(fn($p) => "{$p[0]},{$p[1]}", $points);
@@ -194,7 +201,13 @@ class AnnotationApiController extends ControllerBase implements ContainerInjecti
    *   A JSON response containing the updated annotation.
    */
   public function updateAnnotation(Request $request): JsonResponse {
+    if ($request->getContentTypeFormat() !== 'json') {
+      return new JsonResponse(['error' => 'Content-Type must be application/json.'], 415);
+    }
     $payload = json_decode($request->getContent(), TRUE);
+    if (json_last_error() !== JSON_ERROR_NONE || !is_array($payload)) {
+      return new JsonResponse(['error' => 'Invalid JSON payload.'], 400);
+    }
     $annotation_uri = $payload['id'] ?? NULL;
 
     if (empty($annotation_uri) || !is_string($annotation_uri)) {
@@ -207,12 +220,13 @@ class AnnotationApiController extends ControllerBase implements ContainerInjecti
     if (!$wdb_label) {
       return new JsonResponse(['error' => 'Annotation not found for update.'], 404);
     }
+    $this->resourceAccess()->assertOperationAccess($wdb_label, 'access wdb annotation api update');
 
     $body_object = $payload['bodies'][0] ?? NULL;
     $label_name = $body_object['value'] ?? NULL;
     $points = $payload['target']['selector']['geometry']['points'] ?? NULL;
 
-    if (empty($label_name) || empty($points)) {
+    if (!is_string($label_name) || trim($label_name) === '' || !$this->validPoints($points)) {
       return new JsonResponse(['error' => 'Missing body or selector in payload for update.'], 400);
     }
 
@@ -256,6 +270,7 @@ class AnnotationApiController extends ControllerBase implements ContainerInjecti
     $wdb_label = reset($labels);
 
     if ($wdb_label) {
+      $this->resourceAccess()->assertOperationAccess($wdb_label, 'access wdb annotation api delete');
       try {
         $wdb_label->delete();
       }
@@ -276,6 +291,7 @@ class AnnotationApiController extends ControllerBase implements ContainerInjecti
    *   A JSON response containing a IIIF AnnotationPage.
    */
   public function getWordLevelAnnotations(WdbAnnotationPage $wdb_annotation_page): JsonResponse {
+    $this->resourceAccess()->assertViewAccess($wdb_annotation_page);
     $annotations = [];
     $wu_storage = $this->entityTypeManager->getStorage('wdb_word_unit');
     $map_storage = $this->entityTypeManager->getStorage('wdb_word_map');
@@ -629,7 +645,28 @@ class AnnotationApiController extends ControllerBase implements ContainerInjecti
    *   A JSON response containing the annotation.
    */
   public function getIndividualAnnotation(WdbLabel $wdb_label): JsonResponse {
+    $this->resourceAccess()->assertViewAccess($wdb_label);
     return new JsonResponse($this->buildAnnotationJsonLd($wdb_label));
+  }
+
+  /**
+   * Accepts bounded polygons with finite numeric coordinates only.
+   */
+  private function validPoints($points): bool {
+    if (!is_array($points) || count($points) < 3 || count($points) > 10000) {
+      return FALSE;
+    }
+    foreach ($points as $point) {
+      if (!is_array($point) || count($point) !== 2 || !isset($point[0], $point[1])) {
+        return FALSE;
+      }
+      foreach ($point as $coordinate) {
+        if (!is_numeric($coordinate) || !is_finite((float) $coordinate)) {
+          return FALSE;
+        }
+      }
+    }
+    return TRUE;
   }
 
   /**

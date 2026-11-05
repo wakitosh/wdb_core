@@ -10,6 +10,17 @@ At its core, the system allows users to perform granular annotations on high-res
 
 WDB is designed to transform digital image archives into structured, searchable, and interoperable linguistic databases, ready for scholarly research and public engagement.
 
+## Security update / Upgrade to 1.5.16
+
+1. Update the module and run `drush cr` so the new services and CSRF route requirements take effect. Reload editor pages to load the updated JavaScript.
+2. Replace the delegate used by Cantaloupe with `modules/wdb_cantaloupe_auth/scripts/delegates.rb`, preserving your environment settings. Drupal module updates alone do not replace a separately deployed delegate. All private image requests, including `info.json` and requests arriving through loopback proxies, now require authorization.
+3. Confirm that restricted subsystems reference an existing Drupal Group and that editor roles have the appropriate annotation API permissions. Configured but unavailable groups deny access. Disabling anonymous access always requires login.
+4. Review reverse-proxy/CDN caches for private IIIF responses. Use `private, no-store` for restricted images and purge previously cached responses. Only public collections should use shared immutable caching.
+
+Annotation, full-text, export, dialog, source, search, and autocomplete endpoints now enforce the actual source's subsystem policy. Public Manifest metadata remains available for external viewers. Annotation POST/PUT/DELETE requests require `X-CSRF-Token` from `/session/token`; custom clients must send this header with the session cookie. Creation/update bodies must be valid JSON with finite polygon coordinates.
+
+更新後は `drush cr` と編集画面の再読み込みが必要です。Cantaloupe に別途配備した delegate も差し替えてください。非公開資料の `info.json` と loopback 経由の画像取得も認証対象です。設定済み Group が見つからない場合はアクセスを拒否します。独自の更新クライアントは `/session/token` の値を `X-CSRF-Token` ヘッダーで送信してください。非公開画像に共有キャッシュを使用せず、既存のキャッシュも削除してください。
+
 ## Screenshots
 
 ![Screenshot](docs/screenshots/wdb-screenshot-01.png)
@@ -234,15 +245,7 @@ Note that a port 80 vhost redirecting to HTTPS will send the delegate a 301 rath
 
 ##### Caching IIIF responses at the proxy
 
-IIIF responses are immutable for a given identifier and set of parameters, so they should be cached aggressively. Watch out for blanket `no-store` rules: a directive such as
-
-```apacheconf
-<Files ~ "\.(css|json|jpg)$">
-    Header set Cache-Control no-store
-</Files>
-```
-
-also matches `info.json` and every `default.jpg` tile, which disables IIIF caching entirely. Override it inside the proxy location:
+Private IIIF responses must not be reused by shared caches or served after authorization changes. The following is a safe default for a location that includes restricted images. Reserve `public, max-age=2592000, immutable` for endpoints serving exclusively public collections.
 
 ```apacheconf
 <Location /iiif/>
@@ -251,7 +254,7 @@ also matches `info.json` and every `default.jpg` tile, which disables IIIF cachi
     # so you end up emitting the header twice.
     Header unset Cache-Control
     Header unset Pragma
-    Header set Cache-Control "public, max-age=2592000, immutable"
+    Header set Cache-Control "private, no-store"
     FileETag None
 </Location>
 ```
@@ -600,15 +603,7 @@ Environment="WDB_AUTH_HOST_HEADER=wdb.example.org"
 
 ##### プロキシでの IIIF レスポンスのキャッシュ
 
-IIIF のレスポンスは識別子とパラメータで一意に定まる不変コンテンツなので、積極的にキャッシュすべきです。ここで注意が必要なのが、一律の `no-store` 指定です。たとえば
-
-```apacheconf
-<Files ~ "\.(css|json|jpg)$">
-    Header set Cache-Control no-store
-</Files>
-```
-
-は `info.json` と全タイル（`default.jpg`）にも一致してしまい、IIIF のキャッシュを完全に無効化します。プロキシの Location 側で打ち消してください。
+非公開の IIIF レスポンスを共有キャッシュで再利用すると、認可の変更後も画像が配信される可能性があります。制限付き画像を含む Location では以下を既定とし、`public, max-age=2592000, immutable` は公開資料専用のエンドポイントにのみ設定してください。
 
 ```apacheconf
 <Location /iiif/>
@@ -617,7 +612,7 @@ IIIF のレスポンスは識別子とパラメータで一意に定まる不変
     # ヘッダが 2 本出力されてしまいます。
     Header unset Cache-Control
     Header unset Pragma
-    Header set Cache-Control "public, max-age=2592000, immutable"
+    Header set Cache-Control "private, no-store"
     FileETag None
 </Location>
 ```
