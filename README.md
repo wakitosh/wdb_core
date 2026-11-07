@@ -10,6 +10,18 @@ At its core, the system allows users to perform granular annotations on high-res
 
 WDB is designed to transform digital image archives into structured, searchable, and interoperable linguistic databases, ready for scholarly research and public engagement.
 
+## Security update / Upgrade to 1.5.17
+
+Update the module, run `drush cr`, and reload PHP-FPM if OPcache does not revalidate immediately. The delegate and Cantaloupe need no changes.
+
+- The cookie fallback now identifies users only from Drupal's `sessions` table, so it requires the default database session storage. Sites using another session handler must rely on tokens.
+- IIIF manifests now enforce the source's subsystem policy. This changes the earlier design that kept every manifest public: manifests for restricted subsystems return 403 to users who cannot view them, so any restricted manifest URL you have shared or registered elsewhere stops working for anonymous clients. Manifests for subsystems that allow anonymous access are unchanged.
+- If the delegate uses the loopback entrance, close the authorization endpoint to the public. See "Reverse proxy requirements".
+
+更新後は `drush cr` を実行し、OPcache がすぐに再検証しない環境では PHP-FPM も再読み込みしてください。delegate と Cantaloupe の変更は不要です。Cookie 認可は Drupal 標準のデータベースセッションが必須になりました。
+
+IIIF マニフェストにも閲覧制限を適用しました。すべてのマニフェストを公開としていた従来の設計からの変更です。閲覧できない利用者には制限付きサブシステムのマニフェストが 403 を返すため、外部に公開・登録済みの URL は匿名では読み込めなくなります。匿名アクセスを許可するサブシステムは変わりません。delegate がループバックの入口を使う場合は、認可 API を公開側から閉じてください（「リバースプロキシの要件」を参照）。
+
 ## Security update / Upgrade to 1.5.16
 
 1. Update the module and run `drush cr` so the new services and CSRF route requirements take effect. Reload editor pages to load the updated JavaScript.
@@ -148,9 +160,9 @@ The default TTL is 600 seconds. After a user logs out, previously issued IIIF 
 
 ##### Manifest visibility and mixed-domain image servers
 
-- The IIIF Presentation API v3 manifest route intentionally remains public so external viewers (Mirador, Universal Viewer, etc.) can load metadata without custom auth.
-- `IiifV3ManifestController` only appends `wdb_token` to image URLs when the current viewer passes the subsystem's access policy. If the viewer lacks access, the manifest is still delivered but all same-domain tiles/images will 403 because they are missing a token.
-- When a subsystem points at an image server on another domain that you do not control, the module cannot enforce access. Those URLs stay public even when the subsystem itself is group-restricted, so plan your deployment accordingly.
+- Manifests for subsystems that allow anonymous access stay public, so external viewers (Mirador, Universal Viewer, etc.) can load them without custom auth.
+- Manifests for restricted subsystems follow the same policy as the gallery: viewers who cannot see the source receive 403. For viewers who can, `IiifV3ManifestController` appends `wdb_token` to image URLs so same-domain tiles and images load.
+- When a subsystem points at an image server on another domain that you do not control, the module cannot enforce access. Restricting the manifest does not protect those images: their URLs stay public even when the subsystem itself is group-restricted, so plan your deployment accordingly.
 
 #### Drupal-side configuration
 
@@ -243,6 +255,17 @@ Environment="WDB_AUTH_HOST_HEADER=wdb.example.org"
 
 Note that a port 80 vhost redirecting to HTTPS will send the delegate a 301 rather than an authorization decision, which the delegate treats as "not authorized". Use a dedicated port as above rather than adding an exception to the redirect rule.
 
+Once the delegate uses this entrance, nothing outside the host needs the authorization endpoint, so close it to the public. Add the block below at server level, outside any `<VirtualHost>`, so that it covers every vhost. The loopback vhost still passes because its client is `127.0.0.1`. Do not add it while the delegate still calls the public URL, because every restricted image would then be denied.
+
+```apacheconf
+# Matches the end of the path because Drupal also accepts language prefixes,
+# /index.php, different letter case, and encoded separators for this route.
+# Browsers use /wdb/api/cantaloupe_auth/token/{id}, which stays reachable.
+<LocationMatch "(?i)cantaloupe_auth(/|%2f)*$">
+    Require ip 127.0.0.1
+</LocationMatch>
+```
+
 ##### Caching IIIF responses at the proxy
 
 Private IIIF responses must not be reused by shared caches or served after authorization changes. The following is a safe default for a location that includes restricted images. Reserve `public, max-age=2592000, immutable` for endpoints serving exclusively public collections.
@@ -300,7 +323,7 @@ WDB_AUTH_CACHE_TTL=0 \
 - `Delegate pre_authorize error: Errno::ECONNREFUSED` means `DRUPAL_AUTH_ENDPOINT` is unreachable — commonly the loopback vhost is configured but Apache has not been restarted. The delegate denies the request (403) when it cannot reach Drupal.
 - Configure Cantaloupe's `RollingFileAppender` rather than the plain `FileAppender`. The latter never rotates, and a delegate error that fires on every request will fill the disk quickly — a stack trace per request reached 1.2 GB of error log in one reference deployment.
 - Tokens remain valid until the configured TTL. This is why an already-open tile URL still works for a few minutes after logout, whereas a bare (no-token) URL immediately returns 403 once the Drupal session ends. With `WDB_AUTH_CACHE_TTL` above zero, add that value to the window.
-- Logged-in editors can still access IIIF URLs without tokens because the delegate falls back to session cookies. Disable that fallback only if you are ready to enforce tokens everywhere.
+- Logged-in editors can still access IIIF URLs without tokens because the delegate falls back to session cookies. Disable that fallback only if you are ready to enforce tokens everywhere. The fallback reads Drupal's `sessions` table, so it works only with the default database session storage.
 ### **Export Template Variables**
 
 The TEI/XML and RDF/XML export templates are rendered using Twig. The main data object available in the template is `page_data`. Below is a guide to its structure and the available variables.
@@ -506,9 +529,9 @@ WDB は、デジタル化された画像アーカイブを、学術研究と公�
 
 ##### マニフェスト公開と異なるドメインの画像サーバー
 
-- Mirador や Universal Viewer など外部ビューアから参照できるよう、IIIF Presentation API v3 のマニフェスト URL は常に公開のままとしています。
-- `IiifV3ManifestController` は、閲覧者が当該サブシステムのアクセスポリシーを満たした場合のみ IIIF URL に `wdb_token` を付与します。権限がない閲覧者でもマニフェスト自体は取得できますが、同一ドメイン上のタイルや画像はトークン無しのため 403 で止まります。
-- 逆に、別ドメイン（外部組織や公開 CDN など）の IIIF サーバーを指すサブシステムでは、wdb_core 側でアクセス制御を強制できません。その場合は画像 URL が常に公開扱いとなる点に注意してください。
+- 匿名アクセスを許可するサブシステムのマニフェストは公開のままです。Mirador や Universal Viewer など外部ビューアから、独自の認証なしで読み込めます。
+- 制限付きサブシステムのマニフェストはギャラリーと同じ方針に従い、資料を閲覧できない利用者には 403 を返します。閲覧できる利用者には、`IiifV3ManifestController` が IIIF URL に `wdb_token` を付与するため、同一ドメイン上のタイルや画像も読み込めます。
+- 別ドメイン（外部組織や公開 CDN など）の IIIF サーバーを指すサブシステムでは、wdb_core 側でアクセス制御を強制できません。マニフェストを制限しても画像は保護されず、画像 URL は常に公開扱いとなる点に注意してください。
 
 #### Drupal 側の設定
 
@@ -601,6 +624,17 @@ Environment="WDB_AUTH_HOST_HEADER=wdb.example.org"
 
 なお、ポート 80 の vhost が HTTPS へリダイレクトしている場合、delegate には認可結果ではなく 301 が返り、「認可されなかった」と扱われます。リダイレクト規則に例外を追加するのではなく、上記のように専用ポートを用意してください。
 
+delegate がこの入口を使うようになれば、ホストの外から認可 API を使う必要はないので、公開側から閉じてください。次の設定を `<VirtualHost>` の外（サーバー全体）に追加すると、すべての vhost に適用されます。ループバックの vhost は接続元が `127.0.0.1` なので通ります。delegate が公開 URL を呼んでいる間は追加しないでください。制限付きの画像がすべて拒否されます。
+
+```apacheconf
+# Drupal はこのルートについて、言語プレフィックス、/index.php、大文字小文字の
+# 違い、エンコードされた区切り文字も受け付けるため、パスの末尾で判定します。
+# ブラウザが使う /wdb/api/cantaloupe_auth/token/{id} は通ります。
+<LocationMatch "(?i)cantaloupe_auth(/|%2f)*$">
+    Require ip 127.0.0.1
+</LocationMatch>
+```
+
 ##### プロキシでの IIIF レスポンスのキャッシュ
 
 非公開の IIIF レスポンスを共有キャッシュで再利用すると、認可の変更後も画像が配信される可能性があります。制限付き画像を含む Location では以下を既定とし、`public, max-age=2592000, immutable` は公開資料専用のエンドポイントにのみ設定してください。
@@ -658,7 +692,7 @@ WDB_AUTH_CACHE_TTL=0 \
 - `Delegate pre_authorize error: Errno::ECONNREFUSED` は `DRUPAL_AUTH_ENDPOINT` に到達できないことを示します。ループバック vhost を追加したのに Apache を再起動していない場合によく起きます。delegate は Drupal に到達できないとき、そのリクエストを拒否（403）します。
 - Cantaloupe のログは `FileAppender` ではなく `RollingFileAppender` を設定してください。前者はローテーションを行わないため、毎リクエストで発生する delegate エラーがあると急速にディスクを圧迫します（ある実環境ではエラーログだけで 1.2GB に達していました）。
 - トークンは TTL が切れるまで有効です。ログアウト後もしばらくタイルが表示されるのはこのためです。`WDB_AUTH_CACHE_TTL` を 0 より大きくしている場合は、その秒数がさらに加算されます。
-- トークンなしの URL でも、Drupal にログインしているブラウザからのアクセスであればセッション Cookie によるフォールバックで許可されます。完全にトークンのみとしたい場合は、delegate スクリプト側でフォールバックを無効化してください。
+- トークンなしの URL でも、Drupal にログインしているブラウザからのアクセスであればセッション Cookie によるフォールバックで許可されます。完全にトークンのみとしたい場合は、delegate スクリプト側でフォールバックを無効化してください。このフォールバックは Drupal の `sessions` テーブルを参照するため、標準のデータベースセッションでのみ動作します。
 
 ### エクスポート用テンプレートの変数
 

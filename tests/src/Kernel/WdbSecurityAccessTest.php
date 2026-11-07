@@ -2,6 +2,8 @@
 
 namespace Drupal\Tests\wdb_core\Kernel;
 
+use Drupal\Component\Utility\Crypt;
+use Drupal\Core\Http\ClientFactory;
 use Drupal\Core\Session\AnonymousUserSession;
 use Drupal\group\Entity\Group;
 use Drupal\group\Entity\GroupType;
@@ -19,6 +21,9 @@ use Drupal\wdb_core\Entity\WdbWordMeaning;
 use Drupal\wdb_core\Entity\WdbSign;
 use Drupal\wdb_core\Entity\WdbSignFunction;
 use Drupal\wdb_core\Entity\WdbSignInterpretation;
+use GuzzleHttp\Handler\MockHandler;
+use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use Symfony\Component\HttpFoundation\Request;
@@ -31,7 +36,9 @@ use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 #[PreserveGlobalState(FALSE)]
 class WdbSecurityAccessTest extends KernelTestBase {
 
-  protected static $modules = ['system', 'user', 'field', 'text', 'taxonomy', 'file', 'options', 'entity', 'flexible_permissions', 'group', 'wdb_core'];
+  private const PRIVATE_IMAGE = 'wdb/restricted/private-source/1.ptif';
+
+  protected static $modules = ['system', 'user', 'field', 'text', 'taxonomy', 'file', 'options', 'entity', 'flexible_permissions', 'group', 'wdb_core', 'wdb_cantaloupe_auth'];
 
   private User $member;
   private User $outsider;
@@ -60,16 +67,16 @@ class WdbSecurityAccessTest extends KernelTestBase {
       $role->grantPermission($permission);
     }
     $role->save();
-    $this->member = User::create(['name' => 'member', 'roles' => ['editor']]);
+    $this->member = User::create(['name' => 'member', 'roles' => ['editor'], 'status' => 1]);
     $this->member->save();
-    $this->outsider = User::create(['name' => 'outsider', 'roles' => ['editor']]);
+    $this->outsider = User::create(['name' => 'outsider', 'roles' => ['editor'], 'status' => 1]);
     $this->outsider->save();
     GroupType::create(['id' => 'security', 'label' => 'Security'])->save();
     $group = Group::create(['type' => 'security', 'label' => 'Restricted readers']);
     $group->save();
     $group->addMember($this->member);
-    $this->config('wdb_core.subsystem.' . $public->id())->set('allowAnonymous', TRUE)->save();
-    $this->config('wdb_core.subsystem.' . $this->privateTerm->id())->set('allowAnonymous', FALSE)->set('group_uuid', $group->uuid())->save();
+    $this->config('wdb_core.subsystem.' . $public->id())->set('allowAnonymous', TRUE)->set('iiif_server_hostname', 'iiif.example.org')->save();
+    $this->config('wdb_core.subsystem.' . $this->privateTerm->id())->set('allowAnonymous', FALSE)->set('group_uuid', $group->uuid())->set('iiif_server_hostname', 'iiif.example.org')->save();
 
     foreach ([[$public, 'public-source'], [$this->privateTerm, 'private-source']] as [$term, $identifier]) {
       $source = WdbSource::create(['source_identifier' => $identifier, 'displayname' => $identifier, 'subsystem_tags' => [$term->id()]]);
@@ -144,6 +151,96 @@ class WdbSecurityAccessTest extends KernelTestBase {
     $this->container->get('current_user')->setAccount($this->member);
     $this->assertDenied(fn() => $text->getFullTextContent('public', 'private-source', 1));
     $this->assertDenied(fn() => $this->container->get('wdb_core.export_controller')->downloadText('public', 'private-source', 1));
+  }
+
+  public function testManifestRequiresResourceAccess(): void {
+    // Answer the controller's server-side info.json lookups without a network.
+    $info = '{"width":100,"height":200}';
+    $this->container->set('http_client_factory', new ClientFactory(HandlerStack::create(new MockHandler([
+      new Response(200, [], $info),
+      new Response(200, [], $info),
+    ]))));
+    $this->container->get('router.builder')->rebuild();
+    $manifests = $this->container->get('wdb_core.iiif_v3_manifest_controller');
+
+    foreach ([new AnonymousUserSession(), $this->outsider] as $account) {
+      $this->container->get('current_user')->setAccount($account);
+      $this->assertDenied(fn() => $manifests->buildManifest('restricted', 'private-source'));
+    }
+
+    $this->container->get('current_user')->setAccount($this->member);
+    $this->assertDenied(fn() => $manifests->buildManifest('public', 'private-source'));
+    $response = $manifests->buildManifest('restricted', 'private-source');
+    $this->assertSame(200, $response->getStatusCode());
+    $this->assertStringContainsString('private-source', $response->getContent());
+
+    $this->container->get('current_user')->setAccount(new AnonymousUserSession());
+    $this->assertSame(200, $manifests->buildManifest('public', 'public-source')->getStatusCode());
+  }
+
+  public function testImageAuthorizationTrustsOnlyTheSessionUidColumn(): void {
+    $this->createSessionsTable();
+    $this->addSession('member-session', (int) $this->member->id());
+    $this->addSession('outsider-session', (int) $this->outsider->id());
+    // The payload is opaque data; it must never identify the user.
+    $this->addSession('anonymous-session', 0, 'uid|i:' . $this->member->id() . ';');
+
+    $this->assertTrue($this->authorizeImage(['cookies' => ['SSESS1234=member-session']])['authorized']);
+    $this->assertFalse($this->authorizeImage(['cookies' => ['SSESS1234=outsider-session']])['authorized']);
+    $this->assertFalse($this->authorizeImage(['cookies' => ['SSESS1234=anonymous-session']])['authorized']);
+    $this->assertFalse($this->authorizeImage(['cookies' => ['SSESS1234=unknown-session']])['authorized']);
+    // The stored value is a hash of the session ID, not a credential.
+    $this->assertFalse($this->authorizeImage(['cookies' => ['SSESS1234=' . Crypt::hashBase64('member-session')]])['authorized']);
+  }
+
+  public function testImageAuthorizationRejectsBlockedUsers(): void {
+    $this->createSessionsTable();
+    $this->addSession('member-session', (int) $this->member->id());
+    $token = $this->container->get('wdb_cantaloupe_auth.token_manager')->issueToken('restricted', self::PRIVATE_IMAGE, $this->member);
+
+    $this->assertTrue($this->authorizeImage(['cookies' => ['SSESS1234=member-session']])['authorized']);
+    $this->assertTrue($this->authorizeImage(['token' => $token])['authorized']);
+
+    $this->member->block()->save();
+    $this->assertFalse($this->authorizeImage(['cookies' => ['SSESS1234=member-session']])['authorized']);
+    $this->assertFalse($this->authorizeImage(['token' => $token])['authorized']);
+  }
+
+  /**
+   * Posts a delegate-style request for the private image.
+   */
+  private function authorizeImage(array $payload): array {
+    $body = json_encode($payload + ['identifier' => self::PRIVATE_IMAGE]);
+    $request = Request::create('/wdb/api/cantaloupe_auth', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $body);
+    $response = $this->container->get('wdb_cantaloupe_auth.auth_controller')->authorizeRequest($request);
+    return json_decode($response->getContent(), TRUE);
+  }
+
+  /**
+   * Creates the table core otherwise creates on the first session write.
+   */
+  private function createSessionsTable(): void {
+    $this->container->get('database')->schema()->createTable('sessions', [
+      'fields' => [
+        'uid' => ['type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE],
+        'sid' => ['type' => 'varchar_ascii', 'length' => 128, 'not null' => TRUE],
+        'hostname' => ['type' => 'varchar_ascii', 'length' => 128, 'not null' => TRUE, 'default' => ''],
+        'timestamp' => ['type' => 'int', 'not null' => TRUE, 'default' => 0],
+        'session' => ['type' => 'blob', 'size' => 'big'],
+      ],
+      'primary key' => ['sid'],
+    ]);
+  }
+
+  /**
+   * Stores a session the way core does, keyed by the hashed session ID.
+   */
+  private function addSession(string $sid, int $uid, ?string $payload = NULL): void {
+    $this->container->get('database')->insert('sessions')->fields([
+      'uid' => $uid,
+      'sid' => Crypt::hashBase64($sid),
+      'session' => $payload ?? '_sf2_attributes|' . serialize(['uid' => (string) $uid]),
+    ])->execute();
   }
 
   public function testMutationRejectsNonMembersAndPermitsMember(): void {

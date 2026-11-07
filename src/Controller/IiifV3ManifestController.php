@@ -20,6 +20,8 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  */
 class IiifV3ManifestController extends ControllerBase implements ContainerInjectionInterface {
 
+  use WdbResourceAccessTrait;
+
   /**
    * The WDB data service.
    *
@@ -106,6 +108,7 @@ class IiifV3ManifestController extends ControllerBase implements ContainerInject
     }
     /** @var \Drupal\wdb_core\Entity\WdbSource $source_entity */
     $source_entity = reset($source_entities);
+    $this->resourceAccess()->assertViewAccess($source_entity, $subsysname);
 
     $manifest_uri = Url::fromRoute('wdb_core.iiif_manifest_v3', ['subsysname' => $subsysname, 'source' => $source], ['absolute' => TRUE])->toString();
 

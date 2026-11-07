@@ -2,11 +2,11 @@
 
 namespace Drupal\wdb_cantaloupe_auth\Controller;
 
+use Drupal\Component\Utility\Crypt;
 use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\Controller\ControllerBase;
 use Drupal\Core\Database\Connection;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
-// Use the native \SessionHandlerInterface for read() access (no use import).
 use Drupal\wdb_core\Access\SubsystemAccessPolicyInterface;
 use Drupal\wdb_core\Service\WdbDataService;
 use Drupal\wdb_cantaloupe_auth\Service\TokenManagerInterface;
@@ -20,13 +20,6 @@ use Symfony\Component\HttpFoundation\Request;
  * Controller for the Cantaloupe IIIF Server authorization endpoint.
  */
 class AuthController extends ControllerBase implements ContainerInjectionInterface {
-
-  /**
-   * The write-safe session handler.
-   *
-   * @var \SessionHandlerInterface
-   */
-  protected \SessionHandlerInterface $sessionHandler;
 
   /**
    * The config factory.
@@ -64,8 +57,7 @@ class AuthController extends ControllerBase implements ContainerInjectionInterfa
   /**
    * Constructs a new AuthController object.
    */
-  public function __construct(\SessionHandlerInterface $session_handler, ConfigFactoryInterface $config_factory, WdbDataService $wdbDataService, SubsystemAccessPolicyInterface $subsystemAccessPolicy, Connection $database, ?TokenManagerInterface $tokenManager = NULL) {
-    $this->sessionHandler = $session_handler;
+  public function __construct(ConfigFactoryInterface $config_factory, WdbDataService $wdbDataService, SubsystemAccessPolicyInterface $subsystemAccessPolicy, Connection $database, ?TokenManagerInterface $tokenManager = NULL) {
     $this->configFactory = $config_factory;
     $this->wdbDataService = $wdbDataService;
     $this->subsystemAccessPolicy = $subsystemAccessPolicy;
@@ -78,7 +70,6 @@ class AuthController extends ControllerBase implements ContainerInjectionInterfa
    */
   public static function create(ContainerInterface $container) {
     return new static(
-      $container->get('session_handler.write_safe'),
       $container->get('config.factory'),
       $container->get('wdb_core.data_service'),
       $container->get('wdb_core.subsystem_access_policy'),
@@ -164,7 +155,7 @@ class AuthController extends ControllerBase implements ContainerInjectionInterfa
     }
 
     $user = $this->entityTypeManager()->getStorage('user')->load($uid);
-    if ($user instanceof UserInterface && $this->subsystemAccessPolicy->userHasAccess($subsysname, $user, ['permission' => 'view wdb gallery pages'])) {
+    if ($user instanceof UserInterface && $user->isActive() && $this->subsystemAccessPolicy->userHasAccess($subsysname, $user, ['permission' => 'view wdb gallery pages'])) {
       return new JsonResponse(['authorized' => TRUE, 'reason' => 'User has permission.']);
     }
 
@@ -219,7 +210,7 @@ class AuthController extends ControllerBase implements ContainerInjectionInterfa
     }
 
     $user = $this->entityTypeManager()->getStorage('user')->load($uid);
-    if ($user instanceof UserInterface && $this->subsystemAccessPolicy->userHasAccess($subsysname, $user, ['permission' => 'view wdb gallery pages'])) {
+    if ($user instanceof UserInterface && $user->isActive() && $this->subsystemAccessPolicy->userHasAccess($subsysname, $user, ['permission' => 'view wdb gallery pages'])) {
       return new JsonResponse(['authorized' => TRUE, 'reason' => 'Token validated.']);
     }
 
@@ -231,74 +222,27 @@ class AuthController extends ControllerBase implements ContainerInjectionInterfa
   }
 
   /**
-   * Resolve a UID from a PHP session ID via the {sessions} table.
+   * Resolves a UID from a session ID via the {sessions} table.
+   *
+   * Core records the logged-in user in the uid column and stores only a hash of
+   * the session ID. The session payload is deliberately not read: it can hold
+   * client-supplied text, so it must never decide who the user is. Sites using
+   * a non-database session handler have no such row and must rely on tokens.
    */
   private function getUidFromSessionId(string $session_id): ?int {
-    // 1) Read via the configured session handler (DB/Redis, etc.).
     try {
-      $data = $this->sessionHandler->read($session_id);
-      if (is_string($data) && $data !== '') {
-        $uid = $this->extractUidFromSessionData($data);
-        if ($uid !== NULL && $uid > 0) {
-          return $uid;
-        }
-      }
-    }
-    catch (\Throwable $e) {
-      // Swallow and try DB fallback.
-    }
-
-    // 2) Fallback: query the {sessions} table if available.
-    try {
-      $row = $this->database->select('sessions', 's')
-        ->fields('s', ['uid', 'session'])
-        ->condition('sid', $session_id)
+      $uid = $this->database->select('sessions', 's')
+        ->fields('s', ['uid'])
+        ->condition('sid', Crypt::hashBase64($session_id))
         ->range(0, 1)
         ->execute()
-        ->fetchAssoc();
-      if ($row) {
-        if (!empty($row['uid'])) {
-          return (int) $row['uid'];
-        }
-        $sessionData = $row['session'] ?? '';
-        if (is_resource($sessionData)) {
-          $sessionData = stream_get_contents($sessionData) ?: '';
-        }
-        $sessionData = (string) $sessionData;
-        $uid = $this->extractUidFromSessionData($sessionData);
-        if ($uid !== NULL && $uid > 0) {
-          return $uid;
-        }
-      }
+        ->fetchField();
     }
-    catch (\Throwable $e) {
-      // Ignore and return NULL.
+    catch (\Exception $e) {
+      $this->getLogger('wdb_cantaloupe_auth')->warning('Could not read the sessions table: @message', ['@message' => $e->getMessage()]);
+      return NULL;
     }
-    return NULL;
-  }
-
-  /**
-   * Extracts uid from a serialized PHP session payload.
-   */
-  private function extractUidFromSessionData(string $sessionData): ?int {
-    // Common patterns:
-    // - Native PHP session serializer: uid|i:123;.
-    if (preg_match('/(^|;)\s*uid\|i:(\d+);/', $sessionData, $m)) {
-      return (int) $m[2];
-    }
-    // - uid stored as string (rare but possible): uid|s:\d+:"123";
-    if (preg_match('/(^|;)\s*uid\|s:\d+:"(\d+)";/', $sessionData, $m)) {
-      return (int) $m[2];
-    }
-    // - Inside a serialized array/bag: "uid";i:123;
-    if (preg_match('/"uid";i:(\d+);/', $sessionData, $m)) {
-      return (int) $m[1];
-    }
-    // - Inside a serialized array with uid as string: "uid";s:\d+:"123";
-    if (preg_match('/"uid";s:\d+:"(\d+)";/', $sessionData, $m)) {
-      return (int) $m[1];
-    }
-    return NULL;
+    return $uid ? (int) $uid : NULL;
   }
 
 }

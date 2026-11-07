@@ -2,6 +2,28 @@
 
 All notable changes to this module will be documented in this file.
 
+## [1.5.17] - 2026-11-07
+
+### Security
+- Identified users in the Cantaloupe cookie fallback only from the `uid` column of the `sessions` table, looked up by hashed session ID. The session payload and unhashed session IDs are no longer used.
+- Rejected blocked users in both the cookie and token authorization paths.
+- Enforced source-based authorization on IIIF manifests, including requests that name a different subsystem. Manifests for restricted sources now return 403 to users who cannot view them.
+
+### Changed
+- The cookie fallback now requires Drupal's default database session storage. Sites using another session handler must rely on tokens.
+- Manifests for restricted subsystems are no longer public. This reverses the earlier design that kept every manifest reachable for external viewers; manifests for subsystems that allow anonymous access are unchanged.
+- Documented how to close the authorization endpoint to the public when the delegate uses the loopback vhost.
+
+### セキュリティ (日本語)
+- Cantaloupe の Cookie 認可で、利用者の判定を `sessions` テーブルの `uid` 列のみに限定しました。検索にはハッシュ化したセッション ID を使い、セッションの中身とハッシュ化していない ID は使いません。
+- Cookie とトークンの両方の認可で、無効化されたユーザーを拒否します。
+- IIIF マニフェストに資料単位の認可を追加しました。別サブシステム名の指定も拒否し、閲覧できない制限資料は 403 を返します。
+
+### 変更 (日本語)
+- Cookie 認可は Drupal 標準のデータベースセッションが必須になりました。別のセッションハンドラを使うサイトはトークンを利用してください。
+- 制限付きサブシステムのマニフェストは公開しなくなりました。外部ビューア向けにすべてのマニフェストを公開していた従来の設計からの変更です。匿名アクセスを許可するサブシステムのマニフェストは変わりません。
+- delegate がループバックの vhost を使う場合に、認可 API を公開側から閉じる手順を記載しました。
+
 ## [1.5.16] - 2026-11-06
 
 ### Security
