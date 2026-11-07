@@ -2,6 +2,20 @@
 
 All notable changes to this module will be documented in this file.
 
+## [1.5.19] - 2026-11-07
+
+### Security
+- A view at `/wdb/{subsystem}/collection` now follows the subsystem policy, so restricted source lists are no longer shown to users who cannot view them. Unknown subsystems return 403.
+- Bounded the public `/wdb/api/hull` and `/wdb/api/bbox` APIs to 500 points and coordinates up to 1,000,000 in absolute value. Both remain available to anonymous users. Non-string entries no longer cause a server error, and unusable entries are skipped instead of being read as zero.
+- Stopped writing signed IIIF tokens to the log when a Manifest cannot fetch `info.json`.
+- Marked `administer wdb configuration` as a restricted permission, because it can edit export templates.
+
+### セキュリティ (日本語)
+- `/wdb/{サブシステム}/collection` の View をサブシステムの閲覧制限に従わせ、閲覧できない利用者に制限資料の一覧を表示しないようにしました。存在しないサブシステムは 403 を返します。
+- 公開 API の `/wdb/api/hull` と `/wdb/api/bbox` を、点 500 個、座標の絶対値 1,000,000 までに制限しました。匿名で使えることは変わりません。文字列でない要素でサーバーエラーにならなくなり、使えない要素は 0 と解釈せず無視します。
+- マニフェストの `info.json` 取得失敗時に、署名付き IIIF トークンをログへ書き出さないようにしました。
+- エクスポートテンプレートを編集できるため、`administer wdb configuration` を制限付きの権限にしました。
+
 ## [1.5.18] - 2026-11-07
 
 ### Removed

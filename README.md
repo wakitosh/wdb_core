@@ -10,6 +10,15 @@ At its core, the system allows users to perform granular annotations on high-res
 
 WDB is designed to transform digital image archives into structured, searchable, and interoperable linguistic databases, ready for scholarly research and public engagement.
 
+## Security update / Upgrade to 1.5.19
+
+Update the module, run `drush cr`, and reload PHP-FPM if OPcache does not revalidate immediately.
+
+- A view at `/wdb/{subsystem}/collection` now follows the subsystem policy. Users who cannot view a subsystem receive 403, and menu links to the page are hidden from them.
+- `/wdb/api/hull` and `/wdb/api/bbox` stay public but accept at most 500 points, with coordinates up to 1,000,000 in absolute value.
+
+更新後は `drush cr` を実行し、OPcache がすぐに再検証しない環境では PHP-FPM も再読み込みしてください。`/wdb/{サブシステム}/collection` の View はサブシステムの閲覧制限に従います。閲覧できない利用者には 403 を返し、メニューのリンクも表示しません。`/wdb/api/hull` と `/wdb/api/bbox` は公開のままですが、受け付ける点は 500 個まで、座標の絶対値は 1,000,000 までです。
+
 ## Security update / Upgrade to 1.5.17
 
 Update the module, run `drush cr`, and reload PHP-FPM if OPcache does not revalidate immediately. The delegate and Cantaloupe need no changes.
@@ -777,7 +786,7 @@ WDBモジュールは、豊富なカスタムコンテントエンティティ�
     - `points`（必須）: `"X,Y"` 形式の文字列からなる JSON 配列。例: `["10,20","30,40","25,35"]`。
     - `concavity`（任意・整数）: 凹みの強さ（小さいほどきつい。ただし0で凸包の意味＝ゆるさ最大）。値が大きいほど外形がゆるくなります。デフォルト: `20`。
   - レスポンス: 2次元点の配列 `[[x1, y1], [x2, y2], ...]`（数値）。
-  - エラー: `points` が不足・不正な場合は `400` と `{ "error": "..." }` を返します。
+  - エラー: `points` が不足・不正な場合、または点の数が 500 を超える場合は `400` と `{ "error": "..." }` を返します。数値でない点や、座標の絶対値が 1,000,000 を超える点は無視します。
   - URL例:
     - 凹包（concavity=20）:
       `/wdb/api/hull?points=%5B%2210%2C20%22%2C%2230%2C40%22%2C%2225%2C35%22%2C%2215%2C22%22%5D&concavity=20`
@@ -789,6 +798,6 @@ WDBモジュールは、豊富なカスタムコンテントエンティティ�
   - クエリパラメータ:
     - `points`（必須）: `"X,Y"` 形式の文字列からなる JSON 配列。
   - レスポンス: `{ x, y, w, h }`（左上 `(x,y)`、幅 `w`、高さ `h`）。値は整数に丸められ、`w`/`h` は最低でも `1` となります。
-  - エラー: `points` が不足・不正な場合は `400` と `{ "error": "..." }` を返します。
+  - エラー: `points` が不足・不正な場合、または点の数が 500 を超える場合は `400` と `{ "error": "..." }` を返します。数値でない点や、座標の絶対値が 1,000,000 を超える点は無視します。
   - URL例:
     `/wdb/api/bbox?points=%5B%2210%2C20%22%2C%2230%2C40%22%2C%2225%2C35%22%2C%2215%2C22%22%5D`

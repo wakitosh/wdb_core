@@ -89,6 +89,7 @@ access wdb search form:
 administer wdb configuration:
   title: 'Administer WDB Core configuration'
   description: 'Access the WDB Core settings page.'
+  restrict access: true
 
 # ---- Field UI permissions (required for Field Management menu items) ----
 # These permissions are checked by Drupal core Field UI routes:

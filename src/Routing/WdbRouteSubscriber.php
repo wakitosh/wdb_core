@@ -27,6 +27,17 @@ class WdbRouteSubscriber extends RouteSubscriberBase {
 
       $route->setRequirements($requirements);
     }
+
+    // The collection page lists sources, so it follows the subsystem policy.
+    // It is a site-built view, so match its path rather than a display ID.
+    foreach ($collection as $route) {
+      if ($route->getPath() === '/wdb/{arg_0}/collection') {
+        $requirements = $route->getRequirements();
+        unset($requirements['_access']);
+        $requirements['_custom_access'] = 'wdb_core.resource_access::subsystemRouteAccess';
+        $route->setRequirements($requirements);
+      }
+    }
   }
 
 }

@@ -251,11 +251,13 @@ class IiifV3ManifestController extends ControllerBase implements ContainerInject
         $height = $info_data['height'] ?? 2000;
       }
       catch (\Exception $e) {
+        // Neither the signed URL nor Guzzle's message may reach the log: both
+        // carry a token that is still valid.
         $this->getLogger('wdb_core')->error(
           'Failed to fetch info.json for @url: @message',
           [
-            '@url' => $signed_info_json_url,
-            '@message' => $e->getMessage(),
+            '@url' => $info_json_url,
+            '@message' => preg_replace('/\?\S*/', '?...', $e->getMessage()),
           ]
         );
         // Use fallback dimensions on failure.

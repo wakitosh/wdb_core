@@ -4,6 +4,7 @@ namespace Drupal\Tests\wdb_core\Kernel;
 
 use Drupal\Component\Utility\Crypt;
 use Drupal\Core\Http\ClientFactory;
+use Drupal\Core\Routing\RouteBuildEvent;
 use Drupal\Core\Session\AnonymousUserSession;
 use Drupal\group\Entity\Group;
 use Drupal\group\Entity\GroupType;
@@ -21,13 +22,17 @@ use Drupal\wdb_core\Entity\WdbWordMeaning;
 use Drupal\wdb_core\Entity\WdbSign;
 use Drupal\wdb_core\Entity\WdbSignFunction;
 use Drupal\wdb_core\Entity\WdbSignInterpretation;
+use Drupal\wdb_core\Routing\WdbRouteSubscriber;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
+use Psr\Log\AbstractLogger;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
+use Symfony\Component\Routing\Route;
+use Symfony\Component\Routing\RouteCollection;
 
 /**
  * Exercises resource authorization with actual stored entities and groups.
@@ -176,6 +181,76 @@ class WdbSecurityAccessTest extends KernelTestBase {
 
     $this->container->get('current_user')->setAccount(new AnonymousUserSession());
     $this->assertSame(200, $manifests->buildManifest('public', 'public-source')->getStatusCode());
+  }
+
+  public function testManifestFailuresDoNotLogTokens(): void {
+    $this->container->set('http_client_factory', new ClientFactory(HandlerStack::create(new MockHandler([new Response(403)]))));
+    $this->container->get('router.builder')->rebuild();
+    $logger = new class() extends AbstractLogger {
+
+      public array $lines = [];
+
+      public function log($level, string|\Stringable $message, array $context = []): void {
+        $this->lines[] = strtr((string) $message, array_filter($context, 'is_scalar'));
+      }
+
+    };
+    $this->container->get('logger.factory')->addLogger($logger);
+    $this->container->get('current_user')->setAccount($this->member);
+
+    $this->container->get('wdb_core.iiif_v3_manifest_controller')->buildManifest('restricted', 'private-source');
+
+    $failures = array_filter($logger->lines, fn($line) => str_contains($line, 'Failed to fetch info.json'));
+    $this->assertCount(1, $failures);
+    $this->assertStringContainsString('info.json', reset($failures));
+    $this->assertStringNotContainsString('wdb_token', reset($failures));
+  }
+
+  public function testCollectionRouteFollowsSubsystemPolicy(): void {
+    $access = $this->container->get('wdb_core.resource_access');
+    foreach ([new AnonymousUserSession(), $this->outsider] as $account) {
+      $this->assertFalse($access->subsystemRouteAccess('restricted', $account)->isAllowed());
+      $this->assertTrue($access->subsystemRouteAccess('public', $account)->isAllowed());
+    }
+    $this->assertTrue($access->subsystemRouteAccess('restricted', $this->member)->isAllowed());
+    $this->assertFalse($access->subsystemRouteAccess('no-such-subsystem', $this->member)->isAllowed());
+
+    // The page is a site-built view, so its path identifies it, not its ID.
+    $collection = new RouteCollection();
+    $collection->add('view.site_built.page_1', new Route('/wdb/{arg_0}/collection', [], ['_access' => 'TRUE', '_format' => 'html']));
+    $collection->add('other', new Route('/wdb/{arg_0}/other', [], ['_access' => 'TRUE']));
+    (new WdbRouteSubscriber())->onAlterRoutes(new RouteBuildEvent($collection));
+
+    $requirements = $collection->get('view.site_built.page_1')->getRequirements();
+    $this->assertArrayNotHasKey('_access', $requirements);
+    $this->assertSame('wdb_core.resource_access::subsystemRouteAccess', $requirements['_custom_access']);
+    $this->assertSame('html', $requirements['_format']);
+    $this->assertSame('TRUE', $collection->get('other')->getRequirement('_access'));
+  }
+
+  public function testGeometryApisStayPublicAndBoundTheirInput(): void {
+    $this->container->get('router.builder')->rebuild();
+    $routes = $this->container->get('router.route_provider');
+    $this->assertSame('TRUE', $routes->getRouteByName('wdb_core.hull_api')->getRequirement('_access'));
+    $this->assertSame('TRUE', $routes->getRouteByName('wdb_core.bbox_api')->getRequirement('_access'));
+
+    $export = $this->container->get('wdb_core.export_controller');
+    $call = fn(string $method, array $points) => $export->$method(Request::create('/', 'GET', ['points' => json_encode($points), 'concavity' => 0]));
+    $at_limit = array_map(fn($i) => $i . ',' . ($i * $i % 997), range(1, 500));
+
+    foreach (['calculateHullApi', 'calculateBboxApi'] as $method) {
+      $this->assertSame(200, $call($method, ['10,20', '30,40', '25,35'])->getStatusCode());
+      $this->assertSame(200, $call($method, $at_limit)->getStatusCode());
+      $this->assertSame(400, $call($method, array_merge($at_limit, ['501,1']))->getStatusCode());
+      $this->assertSame(400, $call($method, [['1', '2'], 7, NULL])->getStatusCode());
+      $this->assertSame(400, $call($method, ['1e999,1', '1,1e999', '1000001,1'])->getStatusCode());
+    }
+
+    // Unusable entries are skipped rather than read as coordinates of zero.
+    $bbox = json_decode($call('calculateBboxApi', ['10,20', '30,40', 'x,y', '1e999,1', [1, 2]])->getContent(), TRUE);
+    $this->assertSame(['x' => 10, 'y' => 20, 'w' => 20, 'h' => 20], array_map('intval', $bbox));
+    $hull = json_decode($call('calculateHullApi', ['x,y', '10,20', '30,40', '25,35'])->getContent(), TRUE);
+    $this->assertNotContains([0, 0], $hull);
   }
 
   public function testImageAuthorizationTrustsOnlyTheSessionUidColumn(): void {

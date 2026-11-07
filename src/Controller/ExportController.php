@@ -22,6 +22,20 @@ class ExportController extends ControllerBase implements ContainerInjectionInter
   use WdbResourceAccessTrait;
 
   /**
+   * Most points accepted by the public geometry APIs.
+   *
+   * Hull cost grows steeply with the point count: about 0.7 seconds at 500 and
+   * 3.5 seconds at 1000. Real requests stay below this, because the URL length
+   * limit stops a browser near 340 decimal coordinates.
+   */
+  private const MAX_API_POINTS = 500;
+
+  /**
+   * Largest absolute coordinate accepted by the public geometry APIs.
+   */
+  private const MAX_API_COORDINATE = 1000000;
+
+  /**
    * The WDB data service.
    *
    * @var \Drupal\wdb_core\Service\WdbDataService
@@ -194,33 +208,12 @@ class ExportController extends ControllerBase implements ContainerInjectionInter
    *   A JSON response containing the calculated hull points.
    */
   public function calculateHullApi(Request $request): JsonResponse {
-    $points_json = $request->query->get('points');
-    $concavity = (int) $request->query->get('concavity', 20);
-
-    if (empty($points_json)) {
-      return new JsonResponse(['error' => 'Missing "points" parameter.'], 400);
+    $points = $this->parseApiPoints($request);
+    if ($points instanceof JsonResponse) {
+      return $points;
     }
 
-    $points_strings = json_decode($points_json, TRUE);
-    if (json_last_error() !== JSON_ERROR_NONE || !is_array($points_strings)) {
-      return new JsonResponse(['error' => 'Invalid "points" JSON format.'], 400);
-    }
-
-    // Convert the array of "X,Y" strings to the [ [x1, y1], [x2, y2], ... ]
-    // format expected by HullPHP.
-    $points_for_hull = [];
-    foreach ($points_strings as $point_str) {
-      $coords = explode(',', $point_str);
-      if (count($coords) === 2) {
-        $points_for_hull[] = [(float) $coords[0], (float) $coords[1]];
-      }
-    }
-
-    if (empty($points_for_hull)) {
-      return new JsonResponse(['error' => 'No valid points found in the "points" parameter.'], 400);
-    }
-
-    $hull = $this->hullCalculator->calculate($points_for_hull, $concavity);
+    $hull = $this->hullCalculator->calculate($points, (int) $request->query->get('concavity', 20));
 
     return new JsonResponse($hull);
   }
@@ -241,28 +234,14 @@ class ExportController extends ControllerBase implements ContainerInjectionInter
    *   A JSON response with the bounding box or an error.
    */
   public function calculateBboxApi(Request $request): JsonResponse {
-    $points_json = $request->query->get('points');
-    if (empty($points_json)) {
-      return new JsonResponse(['error' => 'Missing "points" parameter.'], 400);
+    $points = $this->parseApiPoints($request);
+    if ($points instanceof JsonResponse) {
+      return $points;
     }
 
-    $points_strings = json_decode($points_json, TRUE);
-    if (json_last_error() !== JSON_ERROR_NONE || !is_array($points_strings)) {
-      return new JsonResponse(['error' => 'Invalid "points" JSON format.'], 400);
-    }
+    $all_x = array_column($points, 0);
+    $all_y = array_column($points, 1);
 
-    $all_x = [];
-    $all_y = [];
-    foreach ($points_strings as $point_str) {
-      $coords = explode(',', $point_str);
-      if (count($coords) === 2 && is_numeric($coords[0]) && is_numeric($coords[1])) {
-        $all_x[] = (float) $coords[0];
-        $all_y[] = (float) $coords[1];
-      }
-    }
-    if (empty($all_x)) {
-      return new JsonResponse(['error' => 'No valid points found.'], 400);
-    }
     $min_x = min($all_x);
     $max_x = max($all_x);
     $min_y = min($all_y);
@@ -274,6 +253,46 @@ class ExportController extends ControllerBase implements ContainerInjectionInter
       'h' => max(1, round($max_y - $min_y)),
     ];
     return new JsonResponse($bbox);
+  }
+
+  /**
+   * Parses the "points" parameter of the public geometry APIs.
+   *
+   * Entries that are not usable coordinates are skipped.
+   *
+   * @param \Symfony\Component\HttpFoundation\Request $request
+   *   The current request.
+   *
+   * @return array|\Symfony\Component\HttpFoundation\JsonResponse
+   *   A list of [x, y] floats, or an error response.
+   */
+  private function parseApiPoints(Request $request): array|JsonResponse {
+    $points_json = $request->query->get('points');
+    if (empty($points_json)) {
+      return new JsonResponse(['error' => 'Missing "points" parameter.'], 400);
+    }
+
+    $points_strings = json_decode($points_json, TRUE);
+    if (json_last_error() !== JSON_ERROR_NONE || !is_array($points_strings)) {
+      return new JsonResponse(['error' => 'Invalid "points" JSON format.'], 400);
+    }
+    if (count($points_strings) > self::MAX_API_POINTS) {
+      return new JsonResponse(['error' => 'Too many points.'], 400);
+    }
+
+    $is_coordinate = fn($value) => is_numeric($value) && abs((float) $value) <= self::MAX_API_COORDINATE;
+    $points = [];
+    foreach ($points_strings as $point_str) {
+      $coords = is_string($point_str) ? explode(',', $point_str) : [];
+      if (count($coords) === 2 && $is_coordinate($coords[0]) && $is_coordinate($coords[1])) {
+        $points[] = [(float) $coords[0], (float) $coords[1]];
+      }
+    }
+
+    if (!$points) {
+      return new JsonResponse(['error' => 'No valid points found in the "points" parameter.'], 400);
+    }
+    return $points;
   }
 
   /**

@@ -84,6 +84,13 @@ class WdbResourceAccess {
   }
 
   /**
+   * Access callback for pages whose first path argument names a subsystem.
+   */
+  public function subsystemRouteAccess(string $arg_0, AccountInterface $account): AccessResultInterface {
+    return $this->policy->checkAccess($arg_0, $account, ['permission' => 'view wdb gallery pages']);
+  }
+
+  /**
    * Loads and authorizes a page using both its source and subsystem.
    */
   public function loadReadablePage(string $subsystem, string $source_identifier, int $page_number): WdbAnnotationPage {
