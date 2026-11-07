@@ -12,10 +12,6 @@
 use Drupal\Core\Render\Markup;
 use Drupal\Core\Url;
 use Drupal\Core\Link;
-use Drupal\taxonomy\Entity\Term;
-use Drupal\wdb_core\Entity\WdbSource;
-use Drupal\Core\Logger\LoggerChannelFactoryInterface;
-use Drupal\Core\Site\Settings;
 
 /**
  * Implements hook_install().
@@ -24,10 +20,19 @@ function wdb_example_install() {
   $messenger = \Drupal::messenger();
   $entity_type_manager = \Drupal::entityTypeManager();
   $config_factory = \Drupal::configFactory();
+  $term_storage = $entity_type_manager->getStorage('taxonomy_term');
+  $source_storage = $entity_type_manager->getStorage('wdb_source');
+
+  // Sample data outlives this module, and reinstalling must not undo later
+  // edits, so do nothing at all once any of it exists.
+  $existing_subsystems = $term_storage->loadByProperties(['vid' => 'subsystem', 'name' => 'genji']);
+  $existing_sources = $source_storage->loadByProperties(['source_identifier' => 'nich-100412001']);
+  if ($existing_subsystems || $existing_sources) {
+    $messenger->addStatus(t('WDB Example: existing sample data was found, so nothing was created or changed.'));
+    return;
+  }
 
   // --- 1. Get existing taxonomy terms required for the sample data. ---
-  $term_storage = $entity_type_manager->getStorage('taxonomy_term');
-
   $demonstrative_terms = $term_storage->loadByProperties(['vid' => 'lexical_category', 'name' => 'demonstrative']);
   $adnominal_terms = $term_storage->loadByProperties(['vid' => 'lexical_category', 'name' => 'adnominal case marker']);
   $prefix_terms = $term_storage->loadByProperties(['vid' => 'lexical_category', 'name' => 'prefix']);
@@ -51,16 +56,8 @@ function wdb_example_install() {
     }
   }
 
-  $subsystem_terms = $term_storage->loadByProperties(['vid' => 'subsystem', 'name' => 'genji']);
-  $subsystem_created = FALSE;
-  $subsystem_term = reset($subsystem_terms) ?: $term_storage->create(['vid' => 'subsystem', 'name' => 'genji', 'langcode' => 'ja']);
-  if ($subsystem_term->isNew()) {
-    $subsystem_created = TRUE;
-  }
+  $subsystem_term = $term_storage->create(['vid' => 'subsystem', 'name' => 'genji', 'langcode' => 'ja']);
   $subsystem_term->save();
-  if ($subsystem_created) {
-    _wdb_example_tag_created_entity($subsystem_term->getEntityTypeId(), $subsystem_term->uuid());
-  }
 
   // --- 2. Update the subsystem configuration for the example. ---
   $config_name = 'wdb_core.subsystem.' . $subsystem_term->id();
@@ -79,9 +76,7 @@ function wdb_example_install() {
     ->save();
 
   // --- 3. Create the sample WdbSource entity. ---
-  $source_storage = $entity_type_manager->getStorage('wdb_source');
-  $source_entities = $source_storage->loadByProperties(['source_identifier' => 'nich-100412001']);
-  $source_entity = reset($source_entities) ?: $source_storage->create([
+  $source_entity = $source_storage->create([
     'displayname' => '「源氏物語」桐壺',
     'source_identifier' => 'nich-100412001',
     'subsystem_tags' => [$subsystem_term->id()],
@@ -89,11 +84,7 @@ function wdb_example_install() {
     'description' => "e国宝「源氏物語 桐壺」 https://emuseum.nich.go.jp/detail?content_base_id=100412&content_part_id=001",
     'langcode' => 'ja',
   ]);
-  $source_created = $source_entity->isNew();
   $source_entity->save();
-  if ($source_created) {
-    _wdb_example_tag_created_entity($source_entity->getEntityTypeId(), $source_entity->uuid());
-  }
 
   // --- 4. Load all pages and update them with sample data. ---
   $page_storage = $entity_type_manager->getStorage('wdb_annotation_page');
@@ -106,11 +97,7 @@ function wdb_example_install() {
     $page1_entity->get('image_identifier')->setValue('100412001000-001.tif');
     $page1_entity->get('annotation_code')->setValue('nich-100412001_1');
     $page1_entity->get('langcode')->setValue('ja');
-    $was_new = $page1_entity->isNew();
     $page1_entity->save();
-    if ($was_new) {
-      _wdb_example_tag_created_entity($page1_entity->getEntityTypeId(), $page1_entity->uuid());
-    }
   }
 
   $page2_entities = $page_storage->loadByProperties(['source_ref' => $source_entity->id(), 'page_number' => 2]);
@@ -121,11 +108,7 @@ function wdb_example_install() {
     $page2_entity->get('image_identifier')->setValue('100412001000-002.tif');
     $page2_entity->get('annotation_code')->setValue('nich-100412001_2');
     $page2_entity->get('langcode')->setValue('ja');
-    $was_new = $page2_entity->isNew();
     $page2_entity->save();
-    if ($was_new) {
-      _wdb_example_tag_created_entity($page2_entity->getEntityTypeId(), $page2_entity->uuid());
-    }
   }
 
   $page_entities = $page_storage->loadByProperties([
@@ -140,11 +123,7 @@ function wdb_example_install() {
     $page_entity->get('image_identifier')->setValue('100412001000-003.tif');
     $page_entity->get('annotation_code')->setValue('nich-100412001_3');
     $page_entity->get('langcode')->setValue('ja');
-    $was_new = $page_entity->isNew();
     $page_entity->save();
-    if ($was_new) {
-      _wdb_example_tag_created_entity($page_entity->getEntityTypeId(), $page_entity->uuid());
-    }
   }
   else {
     $messenger->addError(t('Could not find the auto-created annotation page (page 3) for the new source.'));
@@ -183,29 +162,23 @@ function wdb_example_install() {
     $word_storage = $entity_type_manager->getStorage('wdb_word');
     $word_entities = $word_storage->loadByProperties(['basic_form' => $word_data['basic']]);
     $word_entity = reset($word_entities) ?: $word_storage->create(['basic_form' => $word_data['basic'], 'lexical_category_ref' => $pos_terms[$word_data['pos']]->id(), 'langcode' => 'ja']);
-    $word_created = $word_entity->isNew();
-    $word_entity->save();
-    if ($word_created) {
-      _wdb_example_tag_created_entity($word_entity->getEntityTypeId(), $word_entity->uuid());
+    if ($word_entity->isNew()) {
+      $word_entity->save();
     }
 
     $meaning_storage = $entity_type_manager->getStorage('wdb_word_meaning');
     $meaning_entities = $meaning_storage->loadByProperties(['word_ref' => $word_entity->id()]);
     $meaning_entity = reset($meaning_entities) ?: $meaning_storage->create(['word_ref' => $word_entity->id(), 'explanation' => 'Example explanation.', 'meaning_identifier' => 1, 'word_meaning_code' => $word_entity->id() . '_1', 'langcode' => 'ja']);
-    $meaning_created = $meaning_entity->isNew();
-    $meaning_entity->save();
-    if ($meaning_created) {
-      _wdb_example_tag_created_entity($meaning_entity->getEntityTypeId(), $meaning_entity->uuid());
+    if ($meaning_entity->isNew()) {
+      $meaning_entity->save();
     }
 
     // Find or create WdbWordUnit.
     $wu_storage = $entity_type_manager->getStorage('wdb_word_unit');
     $wu_entities = $wu_storage->loadByProperties(['original_word_unit_identifier' => $word_data['wu_id']]);
     $wu_entity = reset($wu_entities) ?: $wu_storage->create(['original_word_unit_identifier' => $word_data['wu_id'], 'source_ref' => $source_entity->id(), 'annotation_page_refs' => [$page_entity->id()], 'word_meaning_ref' => $meaning_entity->id(), 'realized_form' => $word_data['realized'], 'word_sequence' => $word_seq, 'langcode' => 'ja']);
-    $wu_created = $wu_entity->isNew();
-    $wu_entity->save();
-    if ($wu_created) {
-      _wdb_example_tag_created_entity($wu_entity->getEntityTypeId(), $wu_entity->uuid());
+    if ($wu_entity->isNew()) {
+      $wu_entity->save();
     }
 
     foreach ($word_data['chars'] as $char) {
@@ -217,20 +190,16 @@ function wdb_example_install() {
       $sign_storage = $entity_type_manager->getStorage('wdb_sign');
       $sign_entities = $sign_storage->loadByProperties(['sign_code' => $char]);
       $sign_entity = reset($sign_entities) ?: $sign_storage->create(['sign_code' => $char, 'langcode' => 'ja']);
-      $sign_created = $sign_entity->isNew();
-      $sign_entity->save();
-      if ($sign_created) {
-        _wdb_example_tag_created_entity($sign_entity->getEntityTypeId(), $sign_entity->uuid());
+      if ($sign_entity->isNew()) {
+        $sign_entity->save();
       }
 
       $function_name = (mb_ereg('[\p{Han}]', $char)) ? 'logogram' : 'phonogram';
       $sf_storage = $entity_type_manager->getStorage('wdb_sign_function');
       $sf_entities = $sf_storage->loadByProperties(['sign_ref' => $sign_entity->id(), 'function_name' => $function_name]);
       $sf_entity = reset($sf_entities) ?: $sf_storage->create(['sign_ref' => $sign_entity->id(), 'function_name' => $function_name, 'langcode' => 'ja']);
-      $sf_created = $sf_entity->isNew();
-      $sf_entity->save();
-      if ($sf_created) {
-        _wdb_example_tag_created_entity($sf_entity->getEntityTypeId(), $sf_entity->uuid());
+      if ($sf_entity->isNew()) {
+        $sf_entity->save();
       }
 
       // Find or create WdbLabel.
@@ -246,33 +215,27 @@ function wdb_example_install() {
       }
       $label_entities = $label_storage->loadByProperties(['label_name' => $label_name, 'annotation_page_ref' => $page_entity->id()]);
       $label_entity = reset($label_entities) ?: $label_storage->create(['label_name' => $label_name, 'annotation_page_ref' => $page_entity->id(), 'polygon_points' => $polygon_points_for_storage, 'label_center_x' => $center_coords['x'], 'label_center_y' => $center_coords['y']]);
-      $label_created = $label_entity->isNew();
-      $label_entity->save();
-      if ($label_created) {
-        _wdb_example_tag_created_entity($label_entity->getEntityTypeId(), $label_entity->uuid());
+      if ($label_entity->isNew()) {
+        $label_entity->save();
+        /** @var \Drupal\Core\Entity\FieldableEntityInterface $label_entity */
+        $label_entity->get('annotation_uri')->setValue(Url::fromRoute('entity.wdb_label.canonical', ['wdb_label' => $label_entity->id()], ['absolute' => TRUE])->toString());
+        $label_entity->save();
       }
-  /** @var \Drupal\Core\Entity\FieldableEntityInterface $label_entity */
-  $label_entity->get('annotation_uri')->setValue(Url::fromRoute('entity.wdb_label.canonical', ['wdb_label' => $label_entity->id()], ['absolute' => TRUE])->toString());
-  $label_entity->save();
 
       // Find or create WdbSignInterpretation.
       $si_storage = $entity_type_manager->getStorage('wdb_sign_interpretation');
       $si_entities = $si_storage->loadByProperties(['label_ref' => $label_entity->id()]);
       $si_entity = reset($si_entities) ?: $si_storage->create(['annotation_page_ref' => $page_entity->id(), 'label_ref' => $label_entity->id(), 'sign_function_ref' => $sf_entity->id(), 'sign_interpretation_code' => 'si_' . $label_entity->id(), 'langcode' => 'ja']);
-      $si_created = $si_entity->isNew();
-      $si_entity->save();
-      if ($si_created) {
-        _wdb_example_tag_created_entity($si_entity->getEntityTypeId(), $si_entity->uuid());
+      if ($si_entity->isNew()) {
+        $si_entity->save();
       }
 
       // Find or create WdbWordMap.
       $map_storage = $entity_type_manager->getStorage('wdb_word_map');
       $map_entities = $map_storage->loadByProperties(['sign_interpretation_ref' => $si_entity->id(), 'word_unit_ref' => $wu_entity->id()]);
       $map_entity = reset($map_entities) ?: $map_storage->create(['sign_interpretation_ref' => $si_entity->id(), 'word_unit_ref' => $wu_entity->id(), 'sign_sequence' => $sign_seq_in_word]);
-      $map_created = $map_entity->isNew();
-      $map_entity->save();
-      if ($map_created) {
-        _wdb_example_tag_created_entity($map_entity->getEntityTypeId(), $map_entity->uuid());
+      if ($map_entity->isNew()) {
+        $map_entity->save();
       }
     }
   }
@@ -310,101 +273,9 @@ function wdb_example_install() {
 }
 
 /**
- * Implements hook_schema().
+ * Removes the purge tracking table and setting. Sample data is left in place.
  */
-function wdb_example_schema() {
-  $schema['wdb_example_map'] = [
-    'description' => 'Tracks entities created by the WDB Example module to enable selective purge.',
-    'fields' => [
-      'id' => [
-        'type' => 'serial',
-        'not null' => TRUE,
-      ],
-      'entity_type' => [
-        'type' => 'varchar',
-        'length' => 64,
-        'not null' => TRUE,
-      ],
-      'entity_uuid' => [
-        'type' => 'varchar',
-        'length' => 128,
-        'not null' => TRUE,
-      ],
-      'created' => [
-        'type' => 'int',
-        'not null' => TRUE,
-        'default' => 0,
-      ],
-    ],
-    'primary key' => ['id'],
-    'unique keys' => [
-      'wdb_example_entity' => ['entity_type', 'entity_uuid'],
-    ],
-    'indexes' => [
-      'entity_type' => ['entity_type'],
-    ],
-  ];
-
-  return $schema;
-}
-
-/**
- * Tags an entity as created by the example module (idempotent).
- *
- * @param string $entity_type
- *   The entity type ID.
- * @param string $uuid
- *   The entity UUID.
- */
-function _wdb_example_tag_created_entity($entity_type, $uuid) {
-  $database = \Drupal::database();
-  if (!$database->schema()->tableExists('wdb_example_map')) {
-    return;
-  }
-  // Try update first; if no row affected, insert.
-  $updated = $database->update('wdb_example_map')
-    ->fields(['created' => \Drupal::time()->getRequestTime()])
-    ->condition('entity_type', $entity_type)
-    ->condition('entity_uuid', $uuid)
-    ->execute();
-  if (!$updated) {
-    try {
-      $database->insert('wdb_example_map')
-        ->fields([
-          'entity_type' => $entity_type,
-          'entity_uuid' => $uuid,
-          'created' => \Drupal::time()->getRequestTime(),
-        ])
-        ->execute();
-    }
-    catch (\Exception $e) {
-      // Ignore race conditions.
-    }
-  }
-}
-
-/**
- * Implements hook_uninstall().
- */
-function wdb_example_uninstall() {
-  $config = \Drupal::config('wdb_example.settings');
-  $purge = (bool) $config->get('purge_on_uninstall');
-
-  // If purge_on_uninstall is disabled, keep example data for users.
-  if (!$purge) {
-    // Drop the tracking table to avoid stale entries; data remains.
-    try {
-      \Drupal::database()->schema()->dropTable('wdb_example_map');
-    }
-    catch (\Exception $e) {
-      // Ignore if already gone.
-    }
-    return;
-  }
-
-  // Use the manager service to purge and log a summary.
-  /** @var \Drupal\wdb_example\Service\WdbExampleManager $manager */
-  $manager = \Drupal::service('wdb_example.manager');
-  $summary = $manager->purgeTracked(TRUE);
-  $manager->logPurgeSummary($summary);
+function wdb_example_update_10001() {
+  \Drupal::database()->schema()->dropTable('wdb_example_map');
+  \Drupal::configFactory()->getEditable('wdb_example.settings')->delete();
 }

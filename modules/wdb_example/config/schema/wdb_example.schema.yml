@@ -1,8 +1,0 @@
-wdb_example.settings:
-  type: config_object
-  label: 'WDB Example settings'
-  mapping:
-    purge_on_uninstall:
-      type: boolean
-      label: 'Purge example data on uninstall'
-      description: 'If true, entities created by wdb_example are removed on uninstall.'

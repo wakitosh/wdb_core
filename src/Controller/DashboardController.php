@@ -5,7 +5,6 @@ namespace Drupal\wdb_core\Controller;
 use Drupal\Core\Controller\ControllerBase;
 use Drupal\Core\Link;
 use Drupal\Core\Url;
-use Symfony\Component\Routing\Exception\RouteNotFoundException;
 
 /**
  * Controller for the WDB administration dashboard.
@@ -65,20 +64,9 @@ class DashboardController extends ControllerBase {
 
     $build['config_links'] = [
       '#theme' => 'item_list',
-      '#items' => (function () {
-        $items = [];
-        $items[] = ['#markup' => Link::fromTextAndUrl($this->t('Module Settings'), Url::fromRoute('wdb_core.settings_form'))->toString()];
-        // Add WDB Example Settings link only if module and route exist.
-        if ($this->moduleHandler()->moduleExists('wdb_example')) {
-          try {
-            $items[] = ['#markup' => Link::fromTextAndUrl($this->t('WDB Example Settings'), Url::fromRoute('wdb_example.admin_form'))->toString()];
-          }
-          catch (RouteNotFoundException $e) {
-            // Route not available; skip.
-          }
-        }
-        return $items;
-      })(),
+      '#items' => [
+        ['#markup' => Link::fromTextAndUrl($this->t('Module Settings'), Url::fromRoute('wdb_core.settings_form'))->toString()],
+      ],
     ];
     return $build;
   }

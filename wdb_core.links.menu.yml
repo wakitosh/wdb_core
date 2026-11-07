@@ -128,9 +128,3 @@ wdb_core.settings_form_menu_link:
   route_name: wdb_core.settings_form
   weight: 0
 
-wdb_example.admin_form_menu_link:
-  title: 'Example Data (wdb_example)'
-  parent: wdb_core.config_links
-  route_name: wdb_example.admin_form
-  weight: 10
-

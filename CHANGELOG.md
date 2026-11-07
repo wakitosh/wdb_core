@@ -2,6 +2,28 @@
 
 All notable changes to this module will be documented in this file.
 
+## [1.5.18] - 2026-11-07
+
+### Removed
+- Removed the purge and mark features of `wdb_example`: the "purge on uninstall" setting, the settings page at `/admin/wdb/settings/example`, the `wdb-example:mark` Drush command, and the `wdb_example_map` tracking table. Purging could stop partway and leave the sample half deleted, and the module now provides no way to delete data.
+
+### Changed
+- Uninstalling `wdb_example` now always keeps all sample data, including anything added later. Sites that had enabled "purge on uninstall" also keep their data.
+- Reinstalling `wdb_example` no longer changes existing data. If the `genji` subsystem or the source `nich-100412001` exists, nothing is created or changed, so edits are kept and deleted data is not recreated.
+
+### Upgrade
+- Run `drush updb` and `drush cr`. The update removes the tracking table and setting and leaves sample data in place.
+
+### 削除 (日本語)
+- `wdb_example` のパージとマーキングの機能を削除しました。対象は「アンインストール時にサンプルを削除」の設定、`/admin/wdb/settings/example` の設定画面、Drush コマンド `wdb-example:mark`、追跡テーブル `wdb_example_map` です。パージは途中で止まってサンプルが半端に残ることがあったため、このモジュールからデータを削除する手段をなくしました。
+
+### 変更 (日本語)
+- `wdb_example` のアンインストール時は、後から追加したものを含め、常にすべてのデータを残します。「アンインストール時にサンプルを削除」を有効にしていたサイトでもデータは残ります。
+- `wdb_example` の再インストール時に既存データを変更しなくなりました。サブシステム `genji` または資料 `nich-100412001` が存在する場合は何も作成・変更しないため、編集内容は保持され、削除したデータも復活しません。
+
+### 更新手順 (日本語)
+- `drush updb` と `drush cr` を実行してください。更新処理は追跡テーブルと設定を削除しますが、サンプルデータには触れません。
+
 ## [1.5.17] - 2026-11-07
 
 ### Security

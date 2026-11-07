@@ -1,6 +1,0 @@
-services:
-  wdb_example.commands:
-    class: Drupal\wdb_example\Commands\WdbExampleCommands
-    arguments: ['@wdb_example.manager']
-    tags:
-      - { name: drush.command }

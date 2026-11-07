@@ -1,5 +1,0 @@
-services:
-  wdb_example.manager:
-    class: Drupal\wdb_example\Service\WdbExampleManager
-    arguments: ['@database', '@entity_type.manager', '@datetime.time', '@logger.factory']
-    public: true
