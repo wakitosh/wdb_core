@@ -2,6 +2,22 @@
 
 All notable changes to this module will be documented in this file.
 
+## [1.5.20] - 2026-11-13
+
+### Security
+- The search page is now cached per query string and per user. Before, the first anonymous visitor's search terms were cached and shown to other anonymous visitors as the form's defaults. Only known, scalar query parameters are used.
+- The search form lists only subsystems the user may read, so the names of restricted subsystems are no longer shown.
+- Autocomplete suggestions come from one grouped query instead of loading every readable entity. A lemma suggestion took about three seconds per keystroke on a real data set, which anonymous users could use to exhaust the server.
+- Escaped stored text in the HTML body of word-level annotations (`words.json`) and in the SVG selector of single annotations. Forms containing `<` or `&` are now shown as written.
+- The Cantaloupe authorization endpoint refuses identifiers that the image server would rewrite (`../`, `/..`, backslashes, empty or `.` segments, control characters), and no longer fails on requests whose JSON has an unexpected shape.
+
+### セキュリティ (日本語)
+- 検索ページを、クエリ文字列ごと、利用者ごとにキャッシュするようにしました。これまでは、最初の匿名訪問者の検索語がキャッシュされ、他の匿名訪問者にフォームの既定値として表示されていました。クエリパラメータは、既知でスカラーのものだけを使います。
+- 検索フォームのサブシステムの選択肢を、利用者が閲覧できるものに限定しました。制限付きサブシステムの名前は表示されません。
+- 入力補完の候補を、閲覧可能なエンティティをすべて読み込む方式から、1 回の集約クエリに変更しました。実データでは見出し語の候補に 1 文字あたり約 3 秒かかり、匿名利用者がサーバーに負荷をかけられる状態でした。
+- 語単位のアノテーション（`words.json`）の HTML 本文と、個別アノテーションの SVG セレクタで、保存されたテキストをエスケープするようにしました。`<` や `&` を含む語形も、入力したとおりに表示されます。
+- Cantaloupe の認可 API は、画像サーバーが書き換える識別子（`../`、`/..`、バックスラッシュ、空または `.` の要素、制御文字）を拒否します。想定外の形の JSON でもエラーにならなくなりました。
+
 ## [1.5.19] - 2026-11-07
 
 ### Security

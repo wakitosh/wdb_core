@@ -2,6 +2,7 @@
 
 namespace Drupal\wdb_core\Controller;
 
+use Drupal\Component\Utility\Html;
 use Drupal\Core\Controller\ControllerBase;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
@@ -349,7 +350,10 @@ class AnnotationApiController extends ControllerBase implements ContainerInjecti
         $word_meaning = $wu->get('word_meaning_ref')->entity;
         $word = $word_meaning ? $word_meaning->get('word_ref')->entity : NULL;
 
-        // Assemble the parts of the HTML body for the annotation.
+        // Assemble the parts of the HTML body for the annotation. Stored text
+        // is escaped: viewers render this body as HTML, and transliterations
+        // legitimately contain characters such as "<".
+        $link = fn(string $url, string $text) => '<a href="' . Html::escape($url) . '" target="_blank">' . Html::escape($text) . '</a>';
         $html_body_parts = [];
 
         $realized_form_value = $wu->get('realized_form')->value;
@@ -362,7 +366,7 @@ class AnnotationApiController extends ControllerBase implements ContainerInjecti
           ]
         )->toString();
 
-        $html_body_parts[] = "<strong>Realized Form:</strong> <a href=\"{$realized_form_search_url}\" target=\"_blank\">{$realized_form_value}</a>";
+        $html_body_parts[] = '<strong>Realized Form:</strong> ' . $link($realized_form_search_url, (string) $realized_form_value);
 
         if ($word) {
           $basic_form_value = $word->get('basic_form')->value;
@@ -374,7 +378,7 @@ class AnnotationApiController extends ControllerBase implements ContainerInjecti
               'absolute' => TRUE,
             ]
           )->toString();
-          $html_body_parts[] = "<strong>Basic Form:</strong> <a href=\"{$basic_form_search_url}\" target=\"_blank\">{$basic_form_value}</a>";
+          $html_body_parts[] = '<strong>Basic Form:</strong> ' . $link($basic_form_search_url, (string) $basic_form_value);
         }
 
         $lexical_category_term = $word ? $word->get('lexical_category_ref')->entity : NULL;
@@ -388,7 +392,7 @@ class AnnotationApiController extends ControllerBase implements ContainerInjecti
               'absolute' => TRUE,
             ]
           )->toString();
-          $html_body_parts[] = "<strong>Lexical Category:</strong> <a href=\"{$lc_search_url}\" target=\"_blank\">{$lc_value}</a>";
+          $html_body_parts[] = '<strong>Lexical Category:</strong> ' . $link($lc_search_url, (string) $lc_value);
         }
 
         $map_ids_for_signs = $map_storage->getQuery()->condition('word_unit_ref', $wu->id())->sort('sign_sequence', 'ASC')->accessCheck(FALSE)->execute();
@@ -413,7 +417,7 @@ class AnnotationApiController extends ControllerBase implements ContainerInjecti
                     'absolute' => TRUE,
                   ]
                 )->toString();
-                $sign_links[] = "<a href=\"{$sign_search_url}\" target=\"_blank\">{$display_text}</a>";
+                $sign_links[] = $link($sign_search_url, $display_text);
               }
             }
           }
@@ -680,7 +684,7 @@ class AnnotationApiController extends ControllerBase implements ContainerInjecti
    */
   private function buildAnnotationJsonLd(WdbLabel $wdb_label): array {
     $polygon_points_array = array_map(fn($item) => $item['value'], $wdb_label->get('polygon_points')->getValue());
-    $svg_string = '<svg><polygon points="' . implode(' ', $polygon_points_array) . '"></polygon></svg>';
+    $svg_string = '<svg><polygon points="' . Html::escape(implode(' ', $polygon_points_array)) . '"></polygon></svg>';
     $wdb_annotation_page = $wdb_label->get('annotation_page_ref')->entity;
 
     return [

@@ -10,6 +10,15 @@ At its core, the system allows users to perform granular annotations on high-res
 
 WDB is designed to transform digital image archives into structured, searchable, and interoperable linguistic databases, ready for scholarly research and public engagement.
 
+## Security update / Upgrade to 1.5.20
+
+Update the module, run `drush cr`, and reload PHP-FPM if OPcache does not revalidate immediately. No database update is needed, and the delegate and Cantaloupe need no changes.
+
+- The search page is cached per query string and per user, and lists only subsystems the user may read.
+- Image identifiers containing `../`, `/..`, a backslash, or an empty or `.` path segment are refused by the authorization endpoint, including in public subsystems. File names such as `a..b.tif` are unaffected.
+
+更新後は `drush cr` を実行し、OPcache がすぐに再検証しない環境では PHP-FPM も再読み込みしてください。データベースの更新は不要で、delegate と Cantaloupe の変更も不要です。検索ページはクエリ文字列ごと、利用者ごとにキャッシュされ、選択肢には閲覧できるサブシステムだけが表示されます。`../`、`/..`、バックスラッシュ、空または `.` のパス要素を含む画像識別子は、公開サブシステムでも認可 API が拒否します（`a..b.tif` のようなファイル名は影響を受けません）。
+
 ## Security update / Upgrade to 1.5.19
 
 Update the module, run `drush cr`, and reload PHP-FPM if OPcache does not revalidate immediately.

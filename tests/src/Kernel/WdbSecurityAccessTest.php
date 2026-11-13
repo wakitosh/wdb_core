@@ -3,6 +3,7 @@
 namespace Drupal\Tests\wdb_core\Kernel;
 
 use Drupal\Component\Utility\Crypt;
+use Drupal\Core\Form\FormState;
 use Drupal\Core\Http\ClientFactory;
 use Drupal\Core\Routing\RouteBuildEvent;
 use Drupal\Core\Session\AnonymousUserSession;
@@ -22,6 +23,8 @@ use Drupal\wdb_core\Entity\WdbWordMeaning;
 use Drupal\wdb_core\Entity\WdbSign;
 use Drupal\wdb_core\Entity\WdbSignFunction;
 use Drupal\wdb_core\Entity\WdbSignInterpretation;
+use Drupal\wdb_core\Entity\WdbWordMap;
+use Drupal\wdb_core\Form\WdbSearchForm;
 use Drupal\wdb_core\Routing\WdbRouteSubscriber;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
@@ -357,6 +360,115 @@ class WdbSecurityAccessTest extends KernelTestBase {
         $matches = json_decode($autocomplete->handleAutocomplete($request)->getContent(), TRUE);
         $this->assertCount($account === $this->member ? 1 : 0, $matches);
       }
+    }
+  }
+
+  public function testSearchFormIsNotSharedAcrossQueriesOrUsers(): void {
+    $this->container->get('router.builder')->rebuild();
+    $request = Request::create('/wdb/public/search', 'GET', ['realized_form' => 'kept', 'basic_form' => ['not', 'scalar'], 'unknown' => 'dropped']);
+    $request->setSession(new \Symfony\Component\HttpFoundation\Session\Session(new \Symfony\Component\HttpFoundation\Session\Storage\MockArraySessionStorage()));
+    $this->container->get('request_stack')->push($request);
+
+    foreach ([[new AnonymousUserSession(), FALSE], [$this->outsider, FALSE], [$this->member, TRUE]] as [$account, $sees_restricted]) {
+      $this->container->get('current_user')->setAccount($account);
+      $form = WdbSearchForm::create($this->container)->buildForm([], new FormState(), 'public');
+
+      // Defaults come from the query string, so each query needs its own copy.
+      $this->assertContains('url.query_args', $form['#cache']['contexts']);
+      $this->assertContains('user', $form['#cache']['contexts']);
+
+      $options = $form['search_fieldset']['ref_filters']['subsystem']['#options'];
+      $this->assertContains('public', $options);
+      $this->assertSame($sees_restricted, in_array('restricted', $options, TRUE));
+
+      $this->assertSame('kept', $form['search_fieldset']['text_filters']['realized_form_wrapper']['realized_form']['#default_value']);
+      $this->assertSame('', $form['search_fieldset']['text_filters']['basic_form_wrapper']['basic_form']['#default_value']);
+      $this->assertSame(['realized_form' => 'kept'], $form['#attached']['drupalSettings']['wdb_core']['search']['initial_params']);
+    }
+  }
+
+  public function testAutocompleteSuggestsEachValueOnce(): void {
+    $source_id = $this->publicPage->get('source_ref')->target_id;
+    foreach ([2, 3] as $sequence) {
+      WdbWordUnit::create(['source_ref' => $source_id, 'annotation_page_refs' => [$this->publicPage->id()], 'original_word_unit_identifier' => 'repeat-' . $sequence, 'realized_form' => 'public-source-text', 'word_sequence' => $sequence])->save();
+    }
+    WdbWordUnit::create(['source_ref' => $source_id, 'annotation_page_refs' => [$this->publicPage->id()], 'original_word_unit_identifier' => 'other', 'realized_form' => 'public-source-other', 'word_sequence' => 4])->save();
+
+    $request = Request::create('/?q=public-source');
+    $request->attributes->set('_route', 'wdb_core.autocomplete.realized_form');
+    $matches = json_decode($this->container->get('wdb_core.autocomplete_controller')->handleAutocomplete($request)->getContent(), TRUE);
+
+    $this->assertSame(['public-source-other', 'public-source-text'], array_column($matches, 'value'));
+    $this->assertSame(array_column($matches, 'value'), array_column($matches, 'label'));
+  }
+
+  public function testWordAnnotationsEscapeStoredText(): void {
+    $this->container->get('router.builder')->rebuild();
+    $label = WdbLabel::create(['annotation_page_ref' => $this->publicPage->id(), 'label_name' => 'Public label', 'polygon_points' => ['0,0', '10,0', '10,10', '0,10']]);
+    $label->save();
+    $category = Term::create(['vid' => 'lexical_category', 'name' => '<u>noun</u>']);
+    $category->save();
+    $word = WdbWord::create(['basic_form' => '<i>lemma</i>', 'lexical_category_ref' => $category->id()]);
+    $word->save();
+    $meaning = WdbWordMeaning::create(['word_ref' => $word->id(), 'meaning_identifier' => 1]);
+    $meaning->save();
+    $unit = WdbWordUnit::create(['source_ref' => $this->publicPage->get('source_ref')->target_id, 'word_meaning_ref' => $meaning->id(), 'annotation_page_refs' => [$this->publicPage->id()], 'original_word_unit_identifier' => 'markup', 'realized_form' => '<b>form</b> & more', 'word_sequence' => 9]);
+    $unit->save();
+    $sign = WdbSign::create(['sign_code' => '<s>sign</s>']);
+    $sign->save();
+    $function = WdbSignFunction::create(['sign_ref' => $sign->id(), 'function_name' => 'reading']);
+    $function->save();
+    $interpretation = WdbSignInterpretation::create(['annotation_page_ref' => $this->publicPage->id(), 'label_ref' => $label->id(), 'sign_function_ref' => $function->id(), 'phone' => '<em>p</em>']);
+    $interpretation->save();
+    WdbWordMap::create(['sign_interpretation_ref' => $interpretation->id(), 'word_unit_ref' => $unit->id(), 'sign_sequence' => 1])->save();
+
+    $response = $this->container->get('wdb_core.annotation_api_controller')->getWordLevelAnnotations($this->publicPage);
+    $items = json_decode($response->getContent(), TRUE)['items'];
+    $this->assertCount(1, $items);
+    $html = $items[0]['body']['value'];
+
+    foreach (['<b>', '<i>', '<u>', '<s>', '<em>'] as $tag) {
+      $this->assertStringNotContainsString($tag, $html);
+    }
+    $this->assertStringContainsString('&lt;b&gt;form&lt;/b&gt; &amp; more', $html);
+    $this->assertStringContainsString('&lt;i&gt;lemma&lt;/i&gt;', $html);
+    $this->assertStringContainsString('&lt;u&gt;noun&lt;/u&gt;', $html);
+    $this->assertStringContainsString('&lt;s&gt;sign&lt;/s&gt; [&lt;em&gt;p&lt;/em&gt;]', $html);
+    // The module's own markup and links stay intact.
+    $this->assertStringContainsString('<strong>Realized Form:</strong> <a href="', $html);
+  }
+
+  public function testImageAuthorizationHandlesMalformedRequests(): void {
+    $post = function (string $body): array {
+      $request = Request::create('/wdb/api/cantaloupe_auth', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $body);
+      return json_decode($this->container->get('wdb_cantaloupe_auth.auth_controller')->authorizeRequest($request)->getContent(), TRUE);
+    };
+
+    foreach (['"abc"', '[1,2]', 'null', 'not json', '{"identifier":["a","b"]}', '{"identifier":7}'] as $body) {
+      $this->assertFalse($post($body)['authorized']);
+    }
+    $this->assertTrue($post('{"identifier":"wdb/public/public-source/1.ptif","cookies":"SSESS1=x","token":["x"]}')['authorized']);
+    $this->assertFalse($post('{"identifier":"wdb/restricted/private-source/1.ptif","cookies":"SSESS1=x","token":["x"]}')['authorized']);
+    $this->assertFalse($post('{"identifier":"wdb/restricted/private-source/1.ptif","cookies":[["SSESS1=x"],7]}')['authorized']);
+
+    // The image server rewrites these sequences before opening a file, so the
+    // subsystem named in the identifier may not be the one that is read.
+    $this->assertTrue($post(json_encode(['identifier' => 'wdb/public/a..b.ptif']))['authorized']);
+    $rewritten = [
+      'wdb/public/../restricted/private-source/1.ptif',
+      'wdb/public/....//restricted/private-source/1.ptif',
+      'wdb/public/..././restricted/private-source/1.ptif',
+      'wdb/public/..x/1.ptif',
+      'wdb/public/x../1.ptif',
+      'wdb/public//1.ptif',
+      'wdb/public/./1.ptif',
+      'wdb/public/1.ptif/',
+      'wdb/public\\..\\restricted/private-source/1.ptif',
+      "wdb/public/1\0.ptif",
+      "wdb/public/1\n.ptif",
+    ];
+    foreach ($rewritten as $identifier) {
+      $this->assertFalse($post(json_encode(['identifier' => $identifier]))['authorized'], $identifier);
     }
   }
 

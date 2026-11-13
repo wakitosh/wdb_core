@@ -5,7 +5,6 @@ namespace Drupal\wdb_core\Controller;
 use Drupal\Core\Controller\ControllerBase;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
-use Drupal\Core\Entity\ContentEntityInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -47,102 +46,39 @@ class AutocompleteController extends ControllerBase implements ContainerInjectio
    *   A JSON response containing the autocomplete suggestions.
    */
   public function handleAutocomplete(Request $request): JsonResponse {
-    $matches = [];
     $q = (string) $request->query->get('q', '');
-    $route_name = $request->attributes->get('_route');
+    $subsystems = $q === '' ? [] : $this->resourceAccess()->readableSubsystemIds();
+    if (!$subsystems) {
+      return new JsonResponse([]);
+    }
 
-    if (strlen($q) > 0) {
-      // Set default target entity and field.
-      $target_entity_type = 'wdb_word_unit';
-      $target_field = 'realized_form';
+    // Each route suggests one field, reached from data that belongs to a
+    // source: word units for forms and lemmas, sign interpretations for signs.
+    [$entity_type, $field, $subsystem_field] = match ($request->attributes->get('_route')) {
+      'wdb_core.autocomplete.basic_form' => ['wdb_word_unit', 'word_meaning_ref.entity.word_ref.entity.basic_form', 'source_ref.entity.subsystem_tags'],
+      'wdb_core.autocomplete.sign' => ['wdb_sign_interpretation', 'sign_function_ref.entity.sign_ref.entity.sign_code', 'annotation_page_ref.entity.source_ref.entity.subsystem_tags'],
+      default => ['wdb_word_unit', 'realized_form', 'source_ref.entity.subsystem_tags'],
+    };
 
-      // Determine the target entity and field based on the route name.
-      if ($route_name === 'wdb_core.autocomplete.basic_form') {
-        $target_entity_type = 'wdb_word';
-        $target_field = 'basic_form';
-      }
-      elseif ($route_name === 'wdb_core.autocomplete.sign') {
-        $target_entity_type = 'wdb_sign';
-        $target_field = 'sign_code';
-      }
+    // One grouped query returns the distinct values. Loading every readable
+    // entity to filter in PHP took seconds per keystroke on a real data set.
+    $rows = $this->entityTypeManager->getStorage($entity_type)->getAggregateQuery()
+      ->accessCheck(FALSE)
+      ->condition($subsystem_field, $subsystems, 'IN')
+      ->condition($field, $q, 'CONTAINS')
+      ->groupBy($field)
+      ->sort($field)
+      ->range(0, 10)
+      ->execute();
 
-      // Build and execute the entity query.
-      $query = $this->entityTypeManager->getStorage($target_entity_type)->getQuery();
-      $subsystems = $this->resourceAccess()->readableSubsystemIds();
-      if (!$subsystems) {
-        return new JsonResponse([]);
-      }
-      if ($target_entity_type === 'wdb_word_unit') {
-        $query->condition('source_ref.entity.subsystem_tags', $subsystems, 'IN');
-      }
-      else {
-        $ids = $this->readableDictionaryIds($target_entity_type, $subsystems);
-        if (!$ids) {
-          return new JsonResponse([]);
-        }
-        $query->condition('id', $ids, 'IN');
-      }
-      $query->condition($target_field, $q, 'CONTAINS');
-      // Removed unsupported groupBy; fetch more rows and deduplicate manually.
-      $query->range(0, 50);
-      $ids = $query->accessCheck(FALSE)->execute();
-
-      if (!empty($ids)) {
-        $entities = $this->entityTypeManager->getStorage($target_entity_type)->loadMultiple($ids);
-        $found_values = [];
-        foreach ($entities as $entity) {
-          if ($entity instanceof ContentEntityInterface && $entity->hasField($target_field) && !$entity->get($target_field)->isEmpty()) {
-            $value = $entity->get($target_field)->value;
-            if (!in_array($value, $found_values, TRUE)) {
-              $matches[] = ['value' => $value, 'label' => $value];
-              $found_values[] = $value;
-              if (count($matches) >= 10) {
-                break;
-              }
-            }
-          }
-        }
+    $matches = [];
+    foreach ($rows as $row) {
+      $value = reset($row);
+      if ($value !== NULL && $value !== '') {
+        $matches[] = ['value' => $value, 'label' => $value];
       }
     }
     return new JsonResponse($matches);
-  }
-
-  /**
-   * Limits dictionary suggestions to entries used by readable sources.
-   */
-  private function readableDictionaryIds(string $type, array $subsystems): array {
-    $ids = [];
-    if ($type === 'wdb_word') {
-      $storage = $this->entityTypeManager->getStorage('wdb_word_unit');
-      $unit_ids = $storage->getQuery()->condition('source_ref.entity.subsystem_tags', $subsystems, 'IN')->accessCheck(FALSE)->execute();
-      $meaning_ids = [];
-      foreach ($storage->loadMultiple($unit_ids) as $unit) {
-        if ($id = $unit->get('word_meaning_ref')->target_id) {
-          $meaning_ids[$id] = $id;
-        }
-      }
-      foreach ($this->entityTypeManager->getStorage('wdb_word_meaning')->loadMultiple($meaning_ids) as $meaning) {
-        if ($id = $meaning->get('word_ref')->target_id) {
-          $ids[$id] = $id;
-        }
-      }
-    }
-    else {
-      $storage = $this->entityTypeManager->getStorage('wdb_sign_interpretation');
-      $interpretation_ids = $storage->getQuery()->condition('annotation_page_ref.entity.source_ref.entity.subsystem_tags', $subsystems, 'IN')->accessCheck(FALSE)->execute();
-      $function_ids = [];
-      foreach ($storage->loadMultiple($interpretation_ids) as $interpretation) {
-        if ($id = $interpretation->get('sign_function_ref')->target_id) {
-          $function_ids[$id] = $id;
-        }
-      }
-      foreach ($this->entityTypeManager->getStorage('wdb_sign_function')->loadMultiple($function_ids) as $function) {
-        if ($id = $function->get('sign_ref')->target_id) {
-          $ids[$id] = $id;
-        }
-      }
-    }
-    return array_values($ids);
   }
 
 }

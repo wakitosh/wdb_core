@@ -83,8 +83,11 @@ class AuthController extends ControllerBase implements ContainerInjectionInterfa
    */
   public function authorizeRequest(Request $request): JsonResponse {
     $logger = $this->getLogger('wdb_cantaloupe_auth');
-    $payload = json_decode($request->getContent(), TRUE) ?? [];
-    $identifier = $payload['identifier'] ?? '';
+    $payload = json_decode($request->getContent(), TRUE);
+    $identifier = is_array($payload) ? ($payload['identifier'] ?? NULL) : NULL;
+    if (!is_string($identifier) || !$this->isPlainIdentifier($identifier)) {
+      return new JsonResponse(['authorized' => FALSE, 'reason' => 'Invalid identifier.']);
+    }
     $parts = explode('/', $identifier);
     $subsysname = $parts[1] ?? NULL;
 
@@ -108,10 +111,10 @@ class AuthController extends ControllerBase implements ContainerInjectionInterfa
     }
 
     // Build cookie map from payload cookies.
-    $cookies = $payload['cookies'] ?? [];
+    $cookies = is_array($payload['cookies'] ?? NULL) ? $payload['cookies'] : [];
     $cookie_map = [];
-    foreach ($cookies as $cookie_string) {
-      $pairs = preg_split('/;\s*/', (string) $cookie_string);
+    foreach (array_filter($cookies, 'is_string') as $cookie_string) {
+      $pairs = preg_split('/;\s*/', $cookie_string);
       foreach ($pairs as $pair) {
         if (strpos($pair, '=') !== FALSE) {
           [$name, $value] = explode('=', $pair, 2);
@@ -167,6 +170,26 @@ class AuthController extends ControllerBase implements ContainerInjectionInterfa
   }
 
   /**
+   * Checks that an identifier names one file path and nothing else.
+   *
+   * The decision below is made from the identifier as sent, but the image
+   * server strips "../", "/.." and their backslash forms before opening a
+   * file. Identifiers it would rewrite are refused, so the subsystem that is
+   * authorized is always the one that is read.
+   */
+  private function isPlainIdentifier(string $identifier): bool {
+    if (preg_match('/[\x00-\x1F\x7F\\\\]/', $identifier) || str_contains($identifier, '../') || str_contains($identifier, '/..')) {
+      return FALSE;
+    }
+    foreach (explode('/', $identifier) as $segment) {
+      if ($segment === '' || $segment === '.' || $segment === '..') {
+        return FALSE;
+      }
+    }
+    return TRUE;
+  }
+
+  /**
    * Attempts to authorize a request via signed token payload.
    */
   protected function authorizeViaToken(array $payload, string $identifier, string $subsysname, LoggerInterface $logger): ?JsonResponse {
@@ -174,7 +197,7 @@ class AuthController extends ControllerBase implements ContainerInjectionInterfa
       return NULL;
     }
 
-    $token = isset($payload['token']) ? trim((string) $payload['token']) : '';
+    $token = is_string($payload['token'] ?? NULL) ? trim($payload['token']) : '';
     if ($token === '') {
       return NULL;
     }

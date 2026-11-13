@@ -7,6 +7,7 @@ use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Entity\EntityRepositoryInterface;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
+use Drupal\wdb_core\Access\WdbResourceAccess;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 
 /**
@@ -40,7 +41,7 @@ class WdbSearchForm extends FormBase implements ContainerInjectionInterface {
    * @param \Drupal\Core\Entity\EntityRepositoryInterface $entity_repository
    *   The entity repository service.
    */
-  public function __construct(EntityTypeManagerInterface $entity_type_manager, EntityRepositoryInterface $entity_repository) {
+  public function __construct(EntityTypeManagerInterface $entity_type_manager, EntityRepositoryInterface $entity_repository, protected WdbResourceAccess $resourceAccess) {
     $this->entityTypeManager = $entity_type_manager;
     $this->entityRepository = $entity_repository;
   }
@@ -51,7 +52,8 @@ class WdbSearchForm extends FormBase implements ContainerInjectionInterface {
   public static function create(ContainerInterface $container) {
     return new static(
       $container->get('entity_type.manager'),
-      $container->get('entity.repository')
+      $container->get('entity.repository'),
+      $container->get('wdb_core.resource_access')
     );
   }
 
@@ -69,8 +71,13 @@ class WdbSearchForm extends FormBase implements ContainerInjectionInterface {
     $form['#attached']['library'][] = 'wdb_core/wdb_search';
 
     // 1. Get query parameters from the URL to set default values.
+    // Only known, scalar parameters are used. The page is built from them, so
+    // it must be cached per query string, and per user for the option list.
     $request = $this->getRequest();
-    $params = $request->query->all();
+    $known = ['subsystem', 'lexical_category', 'include_children', 'realized_form', 'realized_form_op', 'basic_form', 'basic_form_op', 'sign', 'sign_op', 'op', 'page'];
+    $params = array_filter(array_intersect_key($request->query->all(), array_flip($known)), 'is_scalar');
+    $form['#cache']['contexts'][] = 'url.query_args';
+    $form['#cache']['contexts'][] = 'user';
 
     // Handle the subsystem context from the URL.
     $subsystem_tid = NULL;
@@ -93,7 +100,9 @@ class WdbSearchForm extends FormBase implements ContainerInjectionInterface {
     $form['search_fieldset']['ref_filters']['subsystem'] = [
       '#type' => 'select',
       '#title' => $this->t('Subsystem'),
-      '#options' => $this->getTaxonomyTermOptions('subsystem'),
+      // Offer only subsystems the user may read; the names of the others
+      // are not shown.
+      '#options' => array_intersect_key($this->getTaxonomyTermOptions('subsystem'), ['' => TRUE] + array_flip($this->resourceAccess->readableSubsystemIds())),
     // If a subsystem is in the URL, set it as default but keep it editable.
       '#default_value' => $subsystem_tid ?? ($params['subsystem'] ?? ''),
     ];
